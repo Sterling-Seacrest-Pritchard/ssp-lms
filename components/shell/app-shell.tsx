@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 import {
   LayoutDashboard,
   BookOpen,
@@ -18,11 +19,22 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { currentUser } from "@/lib/mock-data/courses";
 import { cn } from "@/lib/utils";
+import { signInAction, signOutAction } from "@/app/actions/auth";
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
 
 type Role = "Learner" | "Admin";
 
@@ -40,8 +52,13 @@ const adminNav = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [role, setRole] = useState<Role>("Learner");
+  const { data: session, status } = useSession();
 
   const navItems = role === "Learner" ? learnerNav : adminNav;
+  const displayName = session?.user?.name ?? currentUser.name;
+  const avatarInitials = session?.user?.name
+    ? initials(session.user.name)
+    : currentUser.avatarInitials;
 
   return (
     <div className="flex min-h-screen w-full">
@@ -81,6 +98,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="flex items-center justify-between border-b px-6 py-3">
           <div className="text-sm text-muted-foreground">
             Viewing as <span className="font-medium text-foreground">{role}</span>
+            {status === "authenticated" && (
+              <span className="ml-2 text-xs">(signed in as {displayName})</span>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <DropdownMenu>
@@ -94,10 +114,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <DropdownMenuItem onClick={() => setRole("Admin")}>
                   Admin
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {status === "authenticated" ? (
+                  <DropdownMenuItem onClick={() => signOutAction()}>
+                    Sign out
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onClick={() => signInAction()}>
+                    Sign in with Microsoft
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
             <Avatar>
-              <AvatarFallback>{currentUser.avatarInitials}</AvatarFallback>
+              <AvatarFallback>{avatarInitials}</AvatarFallback>
             </Avatar>
           </div>
         </header>
