@@ -62,15 +62,16 @@ const adminNav = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [manualRole, setManualRole] = useState<Role>("Learner");
+  const [testRole, setTestRole] = useState<Role | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { data: session, status } = useSession();
   const { resolvedTheme } = useTheme();
   const isAuthenticated = status === "authenticated";
-  const { role, label: roleLabel } = isAuthenticated
-    ? roleFromClaims(session?.user?.roles)
-    : { role: manualRole, label: manualRole };
+  const real = isAuthenticated ? roleFromClaims(session?.user?.roles) : null;
+  const role: Role = testRole ?? real?.role ?? "Learner";
+  const roleLabel = testRole ?? real?.label ?? "Learner";
+  const isTestOverride = testRole !== null;
 
   useEffect(() => {
     setMounted(true);
@@ -174,30 +175,43 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <PanelLeftClose className="h-4 w-4" />
               )}
             </Button>
-            Viewing as <span className="font-medium text-foreground">{roleLabel}</span>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<button type="button" className="flex items-center gap-1.5 hover:text-foreground" />}
+              >
+                Viewing as <span className="font-medium text-foreground">{roleLabel}</span>
+                {isTestOverride && (
+                  <Badge variant="outline" className="text-[10px]">
+                    test view
+                  </Badge>
+                )}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem onClick={() => setTestRole("Learner")}>
+                  Learner
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTestRole("Admin")}>
+                  Admin
+                </DropdownMenuItem>
+                {isAuthenticated && isTestOverride && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setTestRole(null)}>
+                      Use real role ({real?.label})
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             {isAuthenticated && (
               <span className="ml-2 text-xs">(signed in as {displayName})</span>
             )}
           </div>
           <div className="flex items-center gap-3">
             {!isAuthenticated && (
-              <DropdownMenu>
-                <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
-                  Switch role: {manualRole}
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setManualRole("Learner")}>
-                    Learner
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setManualRole("Admin")}>
-                    Admin
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => signInAction()}>
-                    Sign in with Microsoft
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button variant="outline" size="sm" onClick={() => signInAction()}>
+                Sign in with Microsoft
+              </Button>
             )}
             <Avatar>
               {session?.user?.image && <AvatarImage src={session.user.image} alt={displayName} />}

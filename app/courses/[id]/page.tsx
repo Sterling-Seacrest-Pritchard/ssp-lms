@@ -66,9 +66,17 @@ export default async function CourseDetailPage(props: PageProps<"/courses/[id]">
                     {module.type} &middot; {module.durationMinutes} min
                   </p>
                 </div>
-                <Button variant={done ? "outline" : "default"} size="sm">
-                  {done ? "Review" : module.status === "in-progress" ? "Continue" : "Start"}
-                </Button>
+                {module.type === "quiz" ? (
+                  <Link href={`/courses/${course.id}/quiz/${module.id}`}>
+                    <Button variant={done ? "outline" : "default"} size="sm">
+                      {done ? "Review" : module.status === "in-progress" ? "Continue" : "Start"}
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button variant={done ? "outline" : "default"} size="sm">
+                    {done ? "Review" : module.status === "in-progress" ? "Continue" : "Start"}
+                  </Button>
+                )}
               </div>
             );
           })}
