@@ -1,16 +1,17 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useTheme } from "next-themes";
 import {
   Home,
   BookOpen,
   Video,
   BarChart3,
   Users,
-  GraduationCap,
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
@@ -57,9 +58,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [role, setRole] = useState<Role>("Learner");
   const [collapsed, setCollapsed] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const { data: session, status } = useSession();
+  const { resolvedTheme } = useTheme();
 
   useEffect(() => {
+    setMounted(true);
     const stored = localStorage.getItem("sidebar-collapsed");
     if (stored) setCollapsed(stored === "true");
   }, []);
@@ -88,8 +92,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <div className="flex h-full w-64 flex-col">
         <div className="flex items-center gap-2 px-5 py-5">
-          <GraduationCap className="h-6 w-6 text-primary" />
-          <span className="text-lg font-semibold">SSP LMS</span>
+          <Image
+            src={
+              mounted && resolvedTheme === "dark"
+                ? "/logo-horizontal-white.png"
+                : "/logo-horizontal-blue.png"
+            }
+            alt="Sterling Seacrest Pritchard"
+            width={200}
+            height={26}
+            priority
+            className="h-6 w-auto"
+          />
           <Badge variant="secondary" className="ml-auto">
             demo
           </Badge>
