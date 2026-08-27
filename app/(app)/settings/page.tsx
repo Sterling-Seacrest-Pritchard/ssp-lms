@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Label } from "@/components/ui/label";
 import { currentUser } from "@/lib/mock-data/courses";
 import { signOutAction } from "@/app/actions/auth";
-import { cn } from "@/lib/utils";
+import { cn, getInitials } from "@/lib/utils";
 
 const themeOptions = [
   { value: "light", label: "Light", icon: Sun },
@@ -33,16 +33,14 @@ export default function SettingsPage() {
   const [mounted, setMounted] = useState(false);
   const [notifications, setNotifications] = useState(notificationDefaults);
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- server doesn't know the theme; first client render must match SSR output, then update post-hydration
+    setMounted(true);
+  }, []);
 
   const displayName = session?.user?.name ?? currentUser.name;
   const displayEmail = session?.user?.email ?? currentUser.email;
-  const initials = displayName
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const initials = getInitials(displayName);
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">

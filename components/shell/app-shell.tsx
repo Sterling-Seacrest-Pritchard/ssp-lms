@@ -28,25 +28,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { currentUser } from "@/lib/mock-data/courses";
-import { cn } from "@/lib/utils";
+import { cn, getInitials } from "@/lib/utils";
+import { roleFromClaims, type Role } from "@/lib/roles";
 import { signInAction } from "@/app/actions/auth";
-
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
-
-type Role = "Learner" | "Admin";
-
-function roleFromClaims(roles: string[] | undefined): { role: Role; label: string } {
-  if (roles?.includes("OrgAdmin")) return { role: "Admin", label: "Org Admin" };
-  if (roles?.includes("DepartmentAdmin")) return { role: "Admin", label: "Department Admin" };
-  return { role: "Learner", label: "Learner" };
-}
 
 const learnerNav = [
   { href: "/", label: "Home", icon: Home },
@@ -74,6 +58,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isTestOverride = testRole !== null;
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- server has no localStorage; first client render must match SSR output, then update post-hydration
     setMounted(true);
     const stored = localStorage.getItem("sidebar-collapsed");
     if (stored) setCollapsed(stored === "true");
@@ -90,7 +75,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navItems = role === "Learner" ? learnerNav : adminNav;
   const displayName = session?.user?.name ?? currentUser.name;
   const avatarInitials = session?.user?.name
-    ? initials(session.user.name)
+    ? getInitials(session.user.name)
     : currentUser.avatarInitials;
 
   return (

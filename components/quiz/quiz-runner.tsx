@@ -144,7 +144,7 @@ export function QuizRunner({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Demo only — results aren't saved. Course progress won't reflect this attempt yet.
+        Demo only — results aren&apos;t saved. Course progress won&apos;t reflect this attempt yet.
       </p>
     </div>
   );
