@@ -24,8 +24,8 @@ export default async function CourseDetailPage(props: PageProps<"/courses/[id]">
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
       <div>
-        <Link href="/" className="text-sm text-muted-foreground hover:underline">
-          &larr; Back to My Courses
+        <Link href="/courses" className="text-sm text-muted-foreground hover:underline">
+          &larr; Back to Courses
         </Link>
         <div className={`mt-4 h-32 rounded-xl ${course.thumbnail}`} />
         <div className="mt-4 flex items-start justify-between gap-4">

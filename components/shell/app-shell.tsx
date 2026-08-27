@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useSession } from "next-auth/react";
 import {
-  LayoutDashboard,
+  Home,
   BookOpen,
   Video,
   BarChart3,
@@ -40,7 +40,8 @@ function initials(name: string) {
 type Role = "Learner" | "Admin";
 
 const learnerNav = [
-  { href: "/", label: "My Courses", icon: LayoutDashboard },
+  { href: "/", label: "Home", icon: Home },
+  { href: "/courses", label: "Courses", icon: BookOpen },
 ];
 
 const adminNav = [
