@@ -3,6 +3,9 @@ import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [MicrosoftEntraID],
+  pages: {
+    signIn: "/sign-in",
+  },
   callbacks: {
     async jwt({ token, profile }) {
       if (profile?.roles) {

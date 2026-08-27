@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AppShell } from "@/components/shell/app-shell";
 import { SessionProvider } from "next-auth/react";
 import { auth } from "@/auth";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -34,9 +33,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <SessionProvider session={session}>
-            <TooltipProvider>
-              <AppShell>{children}</AppShell>
-            </TooltipProvider>
+            <TooltipProvider>{children}</TooltipProvider>
           </SessionProvider>
         </ThemeProvider>
       </body>
