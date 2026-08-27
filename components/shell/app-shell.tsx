@@ -11,8 +11,9 @@ import {
   BarChart3,
   Users,
   GraduationCap,
+  Settings,
 } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -71,7 +72,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Badge>
         </div>
         <Separator />
-        <nav className="flex flex-col gap-1 px-3 py-4">
+        <nav className="flex flex-1 flex-col gap-1 px-3 py-4">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href;
@@ -92,6 +93,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
+        <Separator />
+        <div className="px-3 py-4">
+          <Link
+            href="/settings"
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              pathname === "/settings"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <Settings className="h-4 w-4" />
+            Settings
+          </Link>
+        </div>
       </aside>
 
       <div className="flex min-h-screen flex-1 flex-col">
@@ -127,6 +143,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </DropdownMenuContent>
             </DropdownMenu>
             <Avatar>
+              {session?.user?.image && <AvatarImage src={session.user.image} alt={displayName} />}
               <AvatarFallback>{avatarInitials}</AvatarFallback>
             </Avatar>
           </div>
