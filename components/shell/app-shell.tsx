@@ -29,7 +29,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { currentUser } from "@/lib/mock-data/courses";
 import { cn } from "@/lib/utils";
-import { signInAction, signOutAction } from "@/app/actions/auth";
+import { signInAction } from "@/app/actions/auth";
 
 function initials(name: string) {
   return name
@@ -41,6 +41,12 @@ function initials(name: string) {
 }
 
 type Role = "Learner" | "Admin";
+
+function roleFromClaims(roles: string[] | undefined): { role: Role; label: string } {
+  if (roles?.includes("OrgAdmin")) return { role: "Admin", label: "Org Admin" };
+  if (roles?.includes("DepartmentAdmin")) return { role: "Admin", label: "Department Admin" };
+  return { role: "Learner", label: "Learner" };
+}
 
 const learnerNav = [
   { href: "/", label: "Home", icon: Home },
@@ -56,11 +62,15 @@ const adminNav = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [role, setRole] = useState<Role>("Learner");
+  const [manualRole, setManualRole] = useState<Role>("Learner");
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { data: session, status } = useSession();
   const { resolvedTheme } = useTheme();
+  const isAuthenticated = status === "authenticated";
+  const { role, label: roleLabel } = isAuthenticated
+    ? roleFromClaims(session?.user?.roles)
+    : { role: manualRole, label: manualRole };
 
   useEffect(() => {
     setMounted(true);
@@ -164,35 +174,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <PanelLeftClose className="h-4 w-4" />
               )}
             </Button>
-            Viewing as <span className="font-medium text-foreground">{role}</span>
-            {status === "authenticated" && (
+            Viewing as <span className="font-medium text-foreground">{roleLabel}</span>
+            {isAuthenticated && (
               <span className="ml-2 text-xs">(signed in as {displayName})</span>
             )}
           </div>
           <div className="flex items-center gap-3">
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
-                Switch role: {role}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setRole("Learner")}>
-                  Learner
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setRole("Admin")}>
-                  Admin
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {status === "authenticated" ? (
-                  <DropdownMenuItem onClick={() => signOutAction()}>
-                    Sign out
+            {!isAuthenticated && (
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+                  Switch role: {manualRole}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setManualRole("Learner")}>
+                    Learner
                   </DropdownMenuItem>
-                ) : (
+                  <DropdownMenuItem onClick={() => setManualRole("Admin")}>
+                    Admin
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => signInAction()}>
                     Sign in with Microsoft
                   </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <Avatar>
               {session?.user?.image && <AvatarImage src={session.user.image} alt={displayName} />}
               <AvatarFallback>{avatarInitials}</AvatarFallback>
