@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import {
   Home,
@@ -12,6 +12,8 @@ import {
   Users,
   GraduationCap,
   Settings,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -54,7 +56,21 @@ const adminNav = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [role, setRole] = useState<Role>("Learner");
+  const [collapsed, setCollapsed] = useState(false);
   const { data: session, status } = useSession();
+
+  useEffect(() => {
+    const stored = localStorage.getItem("sidebar-collapsed");
+    if (stored) setCollapsed(stored === "true");
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("sidebar-collapsed", String(next));
+      return next;
+    });
+  };
 
   const navItems = role === "Learner" ? learnerNav : adminNav;
   const displayName = session?.user?.name ?? currentUser.name;
@@ -64,7 +80,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen w-full">
-      <aside className="hidden w-64 shrink-0 flex-col border-r bg-muted/30 md:flex">
+      <aside
+        className={cn(
+          "hidden shrink-0 flex-col overflow-hidden border-r bg-muted/30 transition-[width] duration-200 md:flex",
+          collapsed ? "w-0 border-r-0" : "w-64"
+        )}
+      >
+        <div className="flex h-full w-64 flex-col">
         <div className="flex items-center gap-2 px-5 py-5">
           <GraduationCap className="h-6 w-6 text-primary" />
           <span className="text-lg font-semibold">SSP LMS</span>
@@ -109,11 +131,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             Settings
           </Link>
         </div>
+        </div>
       </aside>
 
       <div className="flex min-h-screen flex-1 flex-col">
         <header className="flex items-center justify-between border-b px-6 py-3">
-          <div className="text-sm text-muted-foreground">
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={toggleCollapsed}
+              className="hidden md:inline-flex"
+              aria-label={collapsed ? "Show sidebar" : "Hide sidebar"}
+            >
+              {collapsed ? (
+                <PanelLeftOpen className="h-4 w-4" />
+              ) : (
+                <PanelLeftClose className="h-4 w-4" />
+              )}
+            </Button>
             Viewing as <span className="font-medium text-foreground">{role}</span>
             {status === "authenticated" && (
               <span className="ml-2 text-xs">(signed in as {displayName})</span>
