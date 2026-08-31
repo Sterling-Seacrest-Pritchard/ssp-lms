@@ -1,0 +1,106 @@
+import { describe, it, expect, afterAll } from "vitest";
+import AdmZip from "adm-zip";
+import { randomUUID } from "node:crypto";
+import { NextRequest } from "next/server";
+import { eq, inArray } from "drizzle-orm";
+import { POST } from "./route";
+import { db } from "@/lib/db/client";
+import { courses, modules, moduleVersions, scormModuleVersions } from "@/lib/db/schema";
+import { supabaseStorage } from "@/lib/storage/supabase";
+
+function buildSamplePackage() {
+  const zip = new AdmZip();
+  zip.addFile(
+    "imsmanifest.xml",
+    Buffer.from(
+      `<manifest identifier="route_test_manifest"><resources><resource href="index.html"><file href="index.html" /></resource></resources></manifest>`
+    )
+  );
+  zip.addFile("index.html", Buffer.from("<html><body>hi</body></html>"));
+  return zip.toBuffer();
+}
+
+describe("POST /api/admin/scorm-upload", () => {
+  const courseCode = `ROUTE-TEST-${randomUUID()}`;
+  let uploadedPrefix: string | undefined;
+
+  afterAll(async () => {
+    // Clean up in FK dependency order: scormModuleVersions -> moduleVersions ->
+    // modules -> courses. modules.currentVersionId must be cleared before
+    // moduleVersions rows it points to can be deleted.
+    const [course] = await db.select().from(courses).where(eq(courses.code, courseCode));
+    if (course) {
+      const courseModules = await db.select().from(modules).where(eq(modules.courseId, course.id));
+      const moduleIds = courseModules.map((m) => m.id);
+
+      if (moduleIds.length) {
+        const versions = await db
+          .select()
+          .from(moduleVersions)
+          .where(inArray(moduleVersions.moduleId, moduleIds));
+        const versionIds = versions.map((v) => v.id);
+
+        if (versionIds.length) {
+          await db
+            .delete(scormModuleVersions)
+            .where(inArray(scormModuleVersions.moduleVersionId, versionIds));
+          await db
+            .update(modules)
+            .set({ currentVersionId: null })
+            .where(inArray(modules.id, moduleIds));
+          await db.delete(moduleVersions).where(inArray(moduleVersions.id, versionIds));
+        }
+
+        await db.delete(modules).where(inArray(modules.id, moduleIds));
+      }
+
+      await db.delete(courses).where(eq(courses.id, course.id));
+    }
+
+    if (uploadedPrefix) {
+      const { data } = await supabaseStorage.from("scorm-packages").list(uploadedPrefix);
+      const paths = (data ?? []).map((f) => `${uploadedPrefix}/${f.name}`);
+      if (paths.length) await supabaseStorage.from("scorm-packages").remove(paths);
+    }
+  });
+
+  it("uploads a package and creates course/module/version rows", async () => {
+    const form = new FormData();
+    form.set(
+      "package",
+      new File([buildSamplePackage()], "package.zip", { type: "application/zip" })
+    );
+    form.set("courseCode", courseCode);
+    form.set("courseTitle", "Route Test Course");
+    form.set("moduleTitle", "Route Test Module");
+
+    const request = new NextRequest("http://localhost/api/admin/scorm-upload", {
+      method: "POST",
+      body: form,
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+    expect(body.launchUrl).toBe("index.html");
+    expect(body.moduleVersionId).toBeTruthy();
+    uploadedPrefix = body.prefix;
+
+    const [course] = await db.select().from(courses).where(eq(courses.code, courseCode));
+    expect(course.title).toBe("Route Test Course");
+  });
+
+  it("rejects a request missing required fields", async () => {
+    const form = new FormData();
+    form.set("courseCode", "missing-package");
+
+    const request = new NextRequest("http://localhost/api/admin/scorm-upload", {
+      method: "POST",
+      body: form,
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+  });
+});
