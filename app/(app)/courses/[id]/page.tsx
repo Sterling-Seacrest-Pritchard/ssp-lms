@@ -66,8 +66,10 @@ export default async function CourseDetailPage(props: PageProps<"/courses/[id]">
                     {module.type} &middot; {module.durationMinutes} min
                   </p>
                 </div>
-                {module.type === "quiz" ? (
-                  <Link href={`/courses/${course.id}/quiz/${module.id}`}>
+                {module.type === "quiz" || module.type === "video" ? (
+                  <Link
+                    href={`/courses/${course.id}/${module.type}/${module.id}`}
+                  >
                     <Button variant={done ? "outline" : "default"} size="sm">
                       {done ? "Review" : module.status === "in-progress" ? "Continue" : "Start"}
                     </Button>
