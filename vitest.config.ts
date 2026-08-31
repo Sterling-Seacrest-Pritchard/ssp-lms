@@ -6,6 +6,7 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["./vitest.setup.ts"],
     testTimeout: 20000,
+    exclude: ["**/node_modules/**", "**/dist/**", ".claude/worktrees/**", ".superpowers/**"],
   },
   resolve: {
     alias: {
