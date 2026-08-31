@@ -87,7 +87,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
       >
         <div className="flex h-full w-64 flex-col">
-        <div className="flex items-center gap-2 px-5 py-5">
+        <div className="flex items-center px-5 py-5">
           <Image
             src={
               mounted && resolvedTheme === "dark"
@@ -98,11 +98,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             width={200}
             height={26}
             priority
-            className="h-6 w-auto"
+            className="h-auto w-full"
           />
-          <Badge variant="secondary" className="ml-auto">
-            demo
-          </Badge>
         </div>
         <Separator />
         <nav className="flex flex-1 flex-col gap-1 px-3 py-4">
@@ -160,34 +157,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <PanelLeftClose className="h-4 w-4" />
               )}
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={<button type="button" className="flex items-center gap-1.5 hover:text-foreground" />}
-              >
+            {real?.role === "Admin" ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={<button type="button" className="flex items-center gap-1.5 hover:text-foreground" />}
+                >
+                  Viewing as <span className="font-medium text-foreground">{roleLabel}</span>
+                  {isTestOverride && (
+                    <Badge variant="outline" className="text-[10px]">
+                      test view
+                    </Badge>
+                  )}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={() => setTestRole("Learner")}>
+                    Learner
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTestRole("Admin")}>
+                    Admin
+                  </DropdownMenuItem>
+                  {isTestOverride && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setTestRole(null)}>
+                        Use real role ({real?.label})
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <span>
                 Viewing as <span className="font-medium text-foreground">{roleLabel}</span>
-                {isTestOverride && (
-                  <Badge variant="outline" className="text-[10px]">
-                    test view
-                  </Badge>
-                )}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem onClick={() => setTestRole("Learner")}>
-                  Learner
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTestRole("Admin")}>
-                  Admin
-                </DropdownMenuItem>
-                {isAuthenticated && isTestOverride && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setTestRole(null)}>
-                      Use real role ({real?.label})
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              </span>
+            )}
             {isAuthenticated && (
               <span className="ml-2 text-xs">(signed in as {displayName})</span>
             )}
