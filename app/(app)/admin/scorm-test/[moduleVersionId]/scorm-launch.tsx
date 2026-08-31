@@ -67,7 +67,24 @@ export function ScormLaunch({
       <p className="text-sm text-muted-foreground">
         Attempt: {attemptId ?? "creating..."} — last commit: {lastStatus}
       </p>
-      <iframe src={contentUrl} className="h-[600px] w-full rounded border" title="SCORM content" />
+      {/*
+        Gate the iframe's mount on `attemptId` (set only after `window.API` is
+        assigned in the effect above). A SCORM 1.2 SCO calls LMSInitialize as
+        soon as its own document loads and expects to find `window.API`
+        immediately via the window-hierarchy lookup. If the iframe mounted
+        unconditionally, the browser could start loading/executing the SCO
+        before the async POST /api/scorm/attempts round trip resolves and
+        `window.API = api` runs, causing an intermittent, network-timing-
+        dependent LMSInitialize failure that would be easy to misread as a
+        content/package problem instead of a load-order bug.
+      */}
+      {attemptId ? (
+        <iframe src={contentUrl} className="h-[600px] w-full rounded border" title="SCORM content" />
+      ) : (
+        <div className="flex h-[600px] w-full items-center justify-center rounded border text-sm text-muted-foreground">
+          Preparing SCORM runtime…
+        </div>
+      )}
     </div>
   );
 }
