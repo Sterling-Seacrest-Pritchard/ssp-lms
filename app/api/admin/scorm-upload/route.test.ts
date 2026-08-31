@@ -68,7 +68,7 @@ describe("POST /api/admin/scorm-upload", () => {
     const form = new FormData();
     form.set(
       "package",
-      new File([buildSamplePackage()], "package.zip", { type: "application/zip" })
+      new File([new Uint8Array(buildSamplePackage())], "package.zip", { type: "application/zip" })
     );
     form.set("courseCode", courseCode);
     form.set("courseTitle", "Route Test Course");
