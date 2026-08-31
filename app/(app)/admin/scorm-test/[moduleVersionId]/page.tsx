@@ -5,7 +5,6 @@ export default async function ScormTestPage(
   props: PageProps<"/admin/scorm-test/[moduleVersionId]">
 ) {
   const { moduleVersionId } = await props.params;
-  const supabaseUrl = process.env.SUPABASE_URL;
 
   const infoResponse = await fetch(
     `${process.env.AUTH_URL ?? "http://localhost:3000"}/api/scorm/launch-info/${moduleVersionId}`,
@@ -14,8 +13,13 @@ export default async function ScormTestPage(
   if (infoResponse.status === 404) {
     notFound();
   }
-  const { launchUrl, gcsPrefix } = await infoResponse.json();
-  const contentUrl = `${supabaseUrl}/storage/v1/object/public/scorm-packages/${gcsPrefix}/${launchUrl}`;
+  const { launchUrl } = await infoResponse.json();
+  // Same-origin content proxy, NOT the Supabase public object URL: a SCORM 1.2
+  // SCO finds the LMS runtime by reading `.API` off each window up the parent
+  // chain, and that read throws a DOMException on a cross-origin frame - so a
+  // cross-origin iframe can never complete LMSInitialize. Serving the package
+  // through this app's own origin also lets the bucket stay private.
+  const contentUrl = `/api/scorm/content/${moduleVersionId}/${launchUrl}`;
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-4">
