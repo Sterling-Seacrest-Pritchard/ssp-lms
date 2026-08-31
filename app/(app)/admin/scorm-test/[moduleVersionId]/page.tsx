@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { getScormLaunchInfo } from "@/lib/scorm/launch-info";
 import { ScormLaunch } from "./scorm-launch";
 
 export default async function ScormTestPage(
@@ -6,14 +7,11 @@ export default async function ScormTestPage(
 ) {
   const { moduleVersionId } = await props.params;
 
-  const infoResponse = await fetch(
-    `${process.env.AUTH_URL ?? "http://localhost:3000"}/api/scorm/launch-info/${moduleVersionId}`,
-    { cache: "no-store" }
-  );
-  if (infoResponse.status === 404) {
+  const info = await getScormLaunchInfo(moduleVersionId);
+  if (!info) {
     notFound();
   }
-  const { launchUrl } = await infoResponse.json();
+  const { launchUrl } = info;
   // Same-origin content proxy, NOT the Supabase public object URL: a SCORM 1.2
   // SCO finds the LMS runtime by reading `.API` off each window up the parent
   // chain, and that read throws a DOMException on a cross-origin frame - so a

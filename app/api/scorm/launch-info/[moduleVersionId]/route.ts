@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
-import { db } from "@/lib/db/client";
-import { scormModuleVersions } from "@/lib/db/schema";
+import { getScormLaunchInfo } from "@/lib/scorm/launch-info";
 import { isUuid, notFound, serverError } from "@/lib/api/errors";
 
 export async function GET(
@@ -19,16 +17,12 @@ export async function GET(
       return notFound("Module version not found");
     }
 
-    const [row] = await db
-      .select()
-      .from(scormModuleVersions)
-      .where(eq(scormModuleVersions.moduleVersionId, moduleVersionId));
-
-    if (!row) {
+    const info = await getScormLaunchInfo(moduleVersionId);
+    if (!info) {
       return notFound("Module version not found");
     }
 
-    return NextResponse.json({ launchUrl: row.launchUrl, gcsPrefix: row.gcsPrefix });
+    return NextResponse.json(info);
   } catch (error) {
     return serverError(error);
   }
