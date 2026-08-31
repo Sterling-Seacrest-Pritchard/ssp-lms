@@ -1208,7 +1208,7 @@ export default async function ScormTestPage(
 }
 ```
 
-Note: the `scorm-packages` bucket was created **private** in Task 1, so the public object URL above will 403 until either the bucket is temporarily made public for this manual test, or the page is switched to fetch a signed URL from `supabaseStorage.from("scorm-packages").createSignedUrl(...)`. For this admin-only test harness, temporarily flipping the bucket to public in the Supabase dashboard is the fastest path — do that before the manual verification step below, and flip it back afterward (this whole route is deleted once real content delivery is built in a later plan, so it doesn't carry forward as a security gap).
+**Update (post final-review fix wave, 2026-08-31):** the code above (direct public Supabase object URL) was replaced during the final whole-branch review's fix wave. The final review found this direct-URL approach broken two independent ways: (1) the SCO iframe would be cross-origin from the harness page, so SCORM's `window.API` discovery would throw and nothing would ever commit; (2) Supabase re-serves files over HTTP as `text/plain` regardless of stored metadata, so even a same-origin fix wouldn't have rendered the content. The actual shipped code instead proxies content through this app's own origin: `page.tsx` builds `contentUrl = /api/scorm/content/${moduleVersionId}/${launchUrl}`, and a new `app/api/scorm/content/[moduleVersionId]/[...path]/route.ts` downloads from Supabase Storage server-side (using the service-role key) and re-serves it with a correct `Content-Type` from `lib/scorm/mime-types.ts`. The `scorm-packages` bucket **stays private** — no public/private flip needed at any point, superseding steps 3 and 8 below.
 
 - [ ] **Step 7: Manual end-to-end verification (Ian)**
 
@@ -1216,14 +1216,13 @@ This step isn't automatable without a real SCORM package and a browser, so it's 
 
 1. Get a real SCORM `.zip` — either export a tiny test course from Articulate, or download any public SCORM 1.2 sample package.
 2. Start the dev server (`npm run dev`) and `POST` it to `/api/admin/scorm-upload` (a quick way: `curl -F package=@sample.zip -F courseCode=MANUAL-TEST -F courseTitle="Manual Test" -F moduleTitle="Manual Module" http://localhost:3000/api/admin/scorm-upload`). Note the returned `moduleVersionId`.
-3. In the Supabase dashboard, temporarily flip the `scorm-packages` bucket to public (Storage → bucket settings).
-4. Visit `http://localhost:3000/admin/scorm-test/<moduleVersionId>` in the browser.
-5. Confirm the SCORM content renders in the iframe and is interactive.
-6. Interact with the content until it reports progress/completion; confirm "last commit" text on the page updates.
-7. Query the database directly (Supabase dashboard → Table Editor → `scorm_attempt_state`) and confirm a row exists with `raw_cmi` populated and `lesson_status` reflecting what you did in the content.
-8. Flip the `scorm-packages` bucket back to private.
+3. Visit `http://localhost:3000/admin/scorm-test/<moduleVersionId>` in the browser. (No bucket flip needed — the content-proxy route serves it same-origin from the private bucket.)
+4. Confirm the SCORM content renders in the iframe and is interactive.
+5. Interact with the content until it reports progress/completion; confirm "last commit" text on the page updates.
+6. Query the database directly (Supabase dashboard → Table Editor → `scorm_attempt_state`) and confirm a row exists with `raw_cmi` populated and `lesson_status` reflecting what you did in the content.
+7. **Known gap to watch for:** the MIME-type table (`lib/scorm/mime-types.ts`) covers HTML/JS/CSS/images correctly but is missing some common asset extensions (fonts: `.woff`/`.ttf`/`.otf`/`.eot`; audio/video: `.mp3`/`.wav`/`.webm`; `.webp`/`.ico`/`.txt`/`.vtt`). If a real Articulate/Storyline package shows broken fonts or silent audio, that's the likely cause — add the missing extension(s) to the table's mapping.
 
-If all 8 steps hold, the import → launch → commit round-trip is proven and the next plan (Platform Foundation: users/enrollments/RBAC, quiz tables, event log, Cloud SQL migration) can build on top of this schema with confidence.
+If all steps hold, the import → launch → commit round-trip is proven and the next plan (Platform Foundation: users/enrollments/RBAC, quiz tables, event log, Cloud SQL migration) can build on top of this schema with confidence.
 
 - [ ] **Step 8: Commit**
 
