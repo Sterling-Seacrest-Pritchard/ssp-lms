@@ -21,8 +21,19 @@ const MIME_TYPES_BY_EXTENSION: Record<string, string> = {
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
   ".svg": "image/svg+xml",
+  ".woff": "font/woff",
   ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".eot": "application/vnd.ms-fontobject",
   ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+  ".txt": "text/plain",
+  ".vtt": "text/vtt",
 };
 
 export const DEFAULT_MIME_TYPE = "application/octet-stream";

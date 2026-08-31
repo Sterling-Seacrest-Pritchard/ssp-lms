@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# superpowers worktrees - full nested repo copies, never meant to be tracked
+.claude/worktrees/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
