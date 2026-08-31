@@ -53,16 +53,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { resolvedTheme } = useTheme();
   const isAuthenticated = status === "authenticated";
   const real = isAuthenticated ? roleFromClaims(session?.user?.roles) : null;
-  const role: Role = testRole ?? real?.role ?? "Learner";
-  const roleLabel = testRole ?? real?.label ?? "Learner";
-  const isTestOverride = testRole !== null;
+  const canOverrideRole = real?.role === "Admin";
+  // Even a stale localStorage value from before a role change can't self-escalate a non-admin.
+  const effectiveTestRole = canOverrideRole ? testRole : null;
+  const role: Role = effectiveTestRole ?? real?.role ?? "Learner";
+  const roleLabel = effectiveTestRole ?? real?.label ?? "Learner";
+  const isTestOverride = effectiveTestRole !== null;
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- server has no localStorage; first client render must match SSR output, then update post-hydration
     setMounted(true);
-    const stored = localStorage.getItem("sidebar-collapsed");
-    if (stored) setCollapsed(stored === "true");
+    const storedCollapsed = localStorage.getItem("sidebar-collapsed");
+    if (storedCollapsed) setCollapsed(storedCollapsed === "true");
+    const storedTestRole = localStorage.getItem("test-role");
+    if (storedTestRole === "Learner" || storedTestRole === "Admin") {
+      setTestRole(storedTestRole);
+    }
   }, []);
+
+  const updateTestRole = (next: Role | null) => {
+    setTestRole(next);
+    if (next) {
+      localStorage.setItem("test-role", next);
+    } else {
+      localStorage.removeItem("test-role");
+    }
+  };
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
@@ -157,7 +173,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <PanelLeftClose className="h-4 w-4" />
               )}
             </Button>
-            {real?.role === "Admin" ? (
+            {canOverrideRole ? (
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={<button type="button" className="flex items-center gap-1.5 hover:text-foreground" />}
@@ -170,16 +186,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   )}
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={() => setTestRole("Learner")}>
+                  <DropdownMenuItem onClick={() => updateTestRole("Learner")}>
                     Learner
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setTestRole("Admin")}>
+                  <DropdownMenuItem onClick={() => updateTestRole("Admin")}>
                     Admin
                   </DropdownMenuItem>
                   {isTestOverride && (
                     <>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => setTestRole(null)}>
+                      <DropdownMenuItem onClick={() => updateTestRole(null)}>
                         Use real role ({real?.label})
                       </DropdownMenuItem>
                     </>
