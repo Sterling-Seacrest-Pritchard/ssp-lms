@@ -1,8 +1,23 @@
 import { XMLParser } from "fast-xml-parser";
 
+export type ScormVersion = "1.2" | "2004";
+
 export interface ParsedManifest {
   identifier: string;
   launchUrl: string;
+  scormVersion: ScormVersion;
+}
+
+// SCORM 2004 manifests declare <metadata><schemaversion>2004 ...</schemaversion></metadata>;
+// SCORM 1.2 manifests either omit <metadata> entirely or declare "1.2" there.
+// No <metadata> block at all defaults to 1.2, matching most real-world 1.2 exports.
+function detectScormVersion(manifest: Record<string, unknown>): ScormVersion {
+  const metadata = manifest.metadata as { schemaversion?: unknown } | undefined;
+  const schemaVersion = metadata?.schemaversion;
+  if (typeof schemaVersion === "string" && schemaVersion.trim().startsWith("2004")) {
+    return "2004";
+  }
+  return "1.2";
 }
 
 export function parseManifest(xml: string): ParsedManifest {
@@ -25,5 +40,5 @@ export function parseManifest(xml: string): ParsedManifest {
     throw new Error("imsmanifest.xml has no launchable <resource href=\"...\">");
   }
 
-  return { identifier, launchUrl };
+  return { identifier, launchUrl, scormVersion: detectScormVersion(manifest) };
 }

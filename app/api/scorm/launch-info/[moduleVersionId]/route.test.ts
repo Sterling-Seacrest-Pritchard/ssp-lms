@@ -46,6 +46,7 @@ describe("GET /api/scorm/launch-info/[moduleVersionId]", () => {
       moduleVersionId: version.id,
       gcsPrefix: "some-prefix",
       manifestIdentifier: "x",
+      scormVersion: "2004",
       launchUrl: "index.html",
       rawManifestXml: "<manifest/>",
     });
@@ -59,6 +60,7 @@ describe("GET /api/scorm/launch-info/[moduleVersionId]", () => {
     const body = await response.json();
     expect(body.launchUrl).toBe("index.html");
     expect(body.gcsPrefix).toBe("some-prefix");
+    expect(body.scormVersion).toBe("2004");
   });
 
   it("returns 404 for an unknown module version", async () => {

@@ -15,6 +15,19 @@ function packageEntries(zipBuffer: Buffer): ZipEntry[] {
 }
 
 /**
+ * Zips built on Windows can store entry names with literal backslash path
+ * separators ("sco1\index.html") even though manifest hrefs are always
+ * forward-slash ("sco1/index.html", the web/XML convention) - confirmed
+ * against a real SCORM 2004 test package. Supabase Storage silently
+ * normalizes backslash-in-key to forward slash on upload/download (verified
+ * directly against the live bucket), so treating them as equivalent here
+ * matches what actually happens once a file reaches Storage.
+ */
+export function normalizeEntryName(entryName: string): string {
+  return entryName.replace(/\\/g, "/");
+}
+
+/**
  * Read `imsmanifest.xml` out of the zip WITHOUT uploading anything.
  *
  * This is deliberately separate from `uploadScormPackage` so a caller can
@@ -35,6 +48,25 @@ export function readScormManifest(zipBuffer: Buffer): string {
 }
 
 /**
+ * Assert that the manifest's declared launch file actually exists in the zip.
+ *
+ * A manifest can be syntactically valid and still reference a file that was
+ * never packaged (e.g. `<resource href="does_not_exist.html">`) - the upload
+ * would otherwise "succeed" and only fail later, opaquely, when the content
+ * proxy tries to serve a file that was never uploaded.
+ */
+export function assertLaunchFileExists(zipBuffer: Buffer, launchUrl: string): void {
+  const exists = packageEntries(zipBuffer).some(
+    (entry) => normalizeEntryName(entry.entryName) === launchUrl
+  );
+  if (!exists) {
+    throw new Error(
+      `imsmanifest.xml references "${launchUrl}" as the launch file, but the zip doesn't contain it`
+    );
+  }
+}
+
+/**
  * Upload every file in the zip to the `scorm-packages` bucket under `prefix/`.
  *
  * Call this only after the manifest has been read and validated
@@ -49,7 +81,7 @@ export async function uploadScormPackage(
   prefix: string
 ): Promise<UploadedPackage> {
   for (const entry of packageEntries(zipBuffer)) {
-    const path = `${prefix}/${entry.entryName}`;
+    const path = `${prefix}/${normalizeEntryName(entry.entryName)}`;
     const { error } = await supabaseStorage
       .from("scorm-packages")
       .upload(path, entry.getData(), {

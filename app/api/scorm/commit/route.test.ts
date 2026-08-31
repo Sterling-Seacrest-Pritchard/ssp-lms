@@ -85,4 +85,34 @@ describe("POST /api/scorm/commit", () => {
     expect(state.lessonStatus).toBe("completed");
     expect(state.rawCmi).toEqual(secondCmi);
   });
+
+  it("extracts lessonStatus/lessonLocation from SCORM 2004's flattened keys", async () => {
+    // Reuses the attempt seeded by the previous test (tests in this file run
+    // sequentially) rather than calling seed() again - seed() always inserts
+    // the same fixed courseCode, so a second call would violate the unique
+    // constraint on courses.code.
+    const cmi2004 = {
+      "cmi.completion_status": "completed",
+      "cmi.success_status": "passed",
+      "cmi.location": "page-3",
+      "cmi.suspend_data": "state=abc",
+    };
+    const response = await POST(
+      new NextRequest("http://localhost/api/scorm/commit", {
+        method: "POST",
+        body: JSON.stringify({ attemptId, cmi: cmi2004 }),
+      })
+    );
+    expect(response.status).toBe(200);
+
+    const [state] = await db
+      .select()
+      .from(scormAttemptState)
+      .where(eq(scormAttemptState.moduleAttemptId, attemptId));
+
+    expect(state.lessonStatus).toBe("completed");
+    expect(state.lessonLocation).toBe("page-3");
+    expect(state.suspendData).toBe("state=abc");
+    expect(state.rawCmi).toEqual(cmi2004);
+  });
 });

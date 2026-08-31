@@ -5,6 +5,7 @@ import { scormModuleVersions } from "@/lib/db/schema";
 export interface ScormLaunchInfo {
   launchUrl: string;
   gcsPrefix: string;
+  scormVersion: string;
 }
 
 export async function getScormLaunchInfo(
@@ -19,5 +20,5 @@ export async function getScormLaunchInfo(
     return null;
   }
 
-  return { launchUrl: row.launchUrl, gcsPrefix: row.gcsPrefix };
+  return { launchUrl: row.launchUrl, gcsPrefix: row.gcsPrefix, scormVersion: row.scormVersion };
 }

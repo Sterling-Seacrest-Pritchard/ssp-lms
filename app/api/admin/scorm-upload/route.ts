@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { courses, modules, moduleVersions, scormModuleVersions } from "@/lib/db/schema";
 import { parseManifest } from "@/lib/scorm/parse-manifest";
-import { readScormManifest, uploadScormPackage } from "@/lib/scorm/extract-package";
+import { readScormManifest, uploadScormPackage, assertLaunchFileExists } from "@/lib/scorm/extract-package";
 import { badRequest, serverError } from "@/lib/api/errors";
 
 export async function POST(request: NextRequest) {
@@ -43,9 +43,11 @@ export async function POST(request: NextRequest) {
     let manifestXml: string;
     let identifier: string;
     let launchUrl: string;
+    let scormVersion: string;
     try {
       manifestXml = readScormManifest(zipBuffer);
-      ({ identifier, launchUrl } = parseManifest(manifestXml));
+      ({ identifier, launchUrl, scormVersion } = parseManifest(manifestXml));
+      assertLaunchFileExists(zipBuffer, launchUrl);
     } catch (error) {
       return badRequest(
         error instanceof Error ? error.message : "SCORM package could not be read"
@@ -79,6 +81,7 @@ export async function POST(request: NextRequest) {
       moduleVersionId: version.id,
       gcsPrefix: prefix,
       manifestIdentifier: identifier,
+      scormVersion,
       launchUrl,
       rawManifestXml: manifestXml,
     });

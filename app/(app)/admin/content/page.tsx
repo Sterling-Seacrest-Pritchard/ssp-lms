@@ -1,24 +1,30 @@
+import Link from "next/link";
 import { Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { courses } from "@/lib/mock-data/courses";
+import { courses as mockCourses } from "@/lib/mock-data/courses";
+import { listRealCourses } from "@/lib/db/queries";
 
-export default function ContentAuthoringPage() {
+export default async function ContentAuthoringPage() {
+  const realCourses = await listRealCourses();
+
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Content Authoring</h1>
           <p className="text-sm text-muted-foreground">
-            Course, module, and quiz builder — department admin view (mock UI).
+            Course, module, and quiz builder — SCORM package upload is the primary authoring path.
           </p>
         </div>
-        <Button>
-          <Plus className="h-4 w-4" />
-          New Course
-        </Button>
+        <Link href="/admin/content/upload">
+          <Button>
+            <Plus className="h-4 w-4" />
+            New Course
+          </Button>
+        </Link>
       </div>
 
       <Card>
@@ -37,7 +43,29 @@ export default function ContentAuthoringPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {courses.map((course) => (
+              {realCourses.map((course) => (
+                <TableRow key={course.id}>
+                  <TableCell className="font-medium">
+                    <span className="flex items-center gap-2">
+                      {course.title}
+                      <Badge variant="secondary" className="text-[10px]">
+                        Live
+                      </Badge>
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">—</TableCell>
+                  <TableCell>{course.moduleCount}</TableCell>
+                  <TableCell>
+                    <span className="text-xs text-muted-foreground">—</span>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="sm" disabled>
+                      Edit
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {mockCourses.map((course) => (
                 <TableRow key={course.id}>
                   <TableCell className="font-medium">{course.title}</TableCell>
                   <TableCell>{course.department}</TableCell>

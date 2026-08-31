@@ -1,7 +1,12 @@
 import { describe, it, expect, afterAll } from "vitest";
 import AdmZip from "adm-zip";
 import { randomUUID } from "node:crypto";
-import { readScormManifest, uploadScormPackage } from "./extract-package";
+import {
+  readScormManifest,
+  uploadScormPackage,
+  assertLaunchFileExists,
+  normalizeEntryName,
+} from "./extract-package";
 import { supabaseStorage } from "@/lib/storage/supabase";
 
 describe("SCORM package extraction", () => {
@@ -51,5 +56,41 @@ describe("SCORM package extraction", () => {
     zip.addFile("index.html", Buffer.from("<html></html>"));
 
     expect(() => readScormManifest(zip.toBuffer())).toThrow(/imsmanifest\.xml/);
+  });
+
+  it("assertLaunchFileExists passes when the referenced launch file is in the zip", () => {
+    const zip = new AdmZip();
+    zip.addFile("imsmanifest.xml", Buffer.from("<manifest identifier=\"x\"></manifest>"));
+    zip.addFile("index.html", Buffer.from("<html></html>"));
+
+    expect(() => assertLaunchFileExists(zip.toBuffer(), "index.html")).not.toThrow();
+  });
+
+  it("normalizeEntryName converts backslash separators to forward slashes", () => {
+    // Real bug, found live against 03_scorm2004_multisco.zip: zips built on
+    // Windows can store entry names with literal backslashes
+    // ("sco1\\index.html") in their central directory even though manifest
+    // hrefs are always forward-slash ("sco1/index.html", per XML/web
+    // convention) - confirmed via a raw AdmZip read of that exact file.
+    // Supabase Storage itself silently normalizes backslash-in-key to
+    // forward slash on upload/download (verified directly against the live
+    // bucket), which is why the content proxy already worked for these
+    // packages before assertLaunchFileExists existed - so this check has to
+    // treat them as equivalent too, or it rejects perfectly valid packages.
+    // AdmZip's own addFile() strips backslashes rather than preserving them
+    // (confirmed empirically), so this can't be reproduced through a
+    // round-tripped in-memory fixture - tested as a pure function instead.
+    expect(normalizeEntryName("sco1\\index.html")).toBe("sco1/index.html");
+    expect(normalizeEntryName("sco1/index.html")).toBe("sco1/index.html");
+  });
+
+  it("assertLaunchFileExists throws a descriptive error when the launch file is missing", () => {
+    const zip = new AdmZip();
+    zip.addFile("imsmanifest.xml", Buffer.from("<manifest identifier=\"x\"></manifest>"));
+    zip.addFile("index.html", Buffer.from("<html></html>"));
+
+    expect(() => assertLaunchFileExists(zip.toBuffer(), "does_not_exist.html")).toThrow(
+      /does_not_exist\.html/
+    );
   });
 });

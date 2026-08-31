@@ -11,7 +11,7 @@ export default async function ScormTestPage(
   if (!info) {
     notFound();
   }
-  const { launchUrl } = info;
+  const { launchUrl, scormVersion } = info;
   // Same-origin content proxy, NOT the Supabase public object URL: a SCORM 1.2
   // SCO finds the LMS runtime by reading `.API` off each window up the parent
   // chain, and that read throws a DOMException on a cross-origin frame - so a
@@ -25,7 +25,11 @@ export default async function ScormTestPage(
       <p className="text-sm text-muted-foreground">
         Admin-only manual test page — not part of the learner-facing product.
       </p>
-      <ScormLaunch moduleVersionId={moduleVersionId} contentUrl={contentUrl} />
+      <ScormLaunch
+        moduleVersionId={moduleVersionId}
+        contentUrl={contentUrl}
+        scormVersion={scormVersion}
+      />
     </div>
   );
 }

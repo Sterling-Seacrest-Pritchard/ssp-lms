@@ -103,4 +103,87 @@ describe("POST /api/admin/scorm-upload", () => {
     const response = await POST(request);
     expect(response.status).toBe(400);
   });
+
+  it("stores the detected SCORM version on the module version", async () => {
+    const zip = new AdmZip();
+    zip.addFile(
+      "imsmanifest.xml",
+      Buffer.from(
+        `<manifest identifier="route_test_2004"><metadata><schema>ADL SCORM</schema><schemaversion>2004 4th Edition</schemaversion></metadata><resources><resource href="index.html"><file href="index.html" /></resource></resources></manifest>`
+      )
+    );
+    zip.addFile("index.html", Buffer.from("<html></html>"));
+
+    const form = new FormData();
+    form.set(
+      "package",
+      new File([new Uint8Array(zip.toBuffer())], "package.zip", { type: "application/zip" })
+    );
+    form.set("courseCode", `${courseCode}-2004`);
+    form.set("courseTitle", "Route Test 2004 Course");
+    form.set("moduleTitle", "Route Test 2004 Module");
+
+    const request = new NextRequest("http://localhost/api/admin/scorm-upload", {
+      method: "POST",
+      body: form,
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+
+    const [version] = await db
+      .select()
+      .from(scormModuleVersions)
+      .where(eq(scormModuleVersions.moduleVersionId, body.moduleVersionId));
+    expect(version.scormVersion).toBe("2004");
+
+    // Clean up this second course independently of the shared afterAll.
+    await db.delete(scormModuleVersions).where(eq(scormModuleVersions.moduleVersionId, body.moduleVersionId));
+    const [course2004] = await db.select().from(courses).where(eq(courses.code, `${courseCode}-2004`));
+    const modules2004 = await db.select().from(modules).where(eq(modules.courseId, course2004.id));
+    await db
+      .update(modules)
+      .set({ currentVersionId: null })
+      .where(inArray(modules.id, modules2004.map((m) => m.id)));
+    await db.delete(moduleVersions).where(eq(moduleVersions.id, body.moduleVersionId));
+    await db.delete(modules).where(inArray(modules.id, modules2004.map((m) => m.id)));
+    await db.delete(courses).where(eq(courses.id, course2004.id));
+    const { data } = await supabaseStorage.from("scorm-packages").list(body.prefix);
+    const paths = (data ?? []).map((f) => `${body.prefix}/${f.name}`);
+    if (paths.length) await supabaseStorage.from("scorm-packages").remove(paths);
+  });
+
+  it("rejects a manifest that references a launch file not present in the zip", async () => {
+    const zip = new AdmZip();
+    zip.addFile(
+      "imsmanifest.xml",
+      Buffer.from(
+        `<manifest identifier="route_test_badref"><resources><resource href="does_not_exist.html"><file href="does_not_exist.html" /></resource></resources></manifest>`
+      )
+    );
+    zip.addFile("unrelated.html", Buffer.from("<html></html>"));
+
+    const form = new FormData();
+    form.set(
+      "package",
+      new File([new Uint8Array(zip.toBuffer())], "package.zip", { type: "application/zip" })
+    );
+    form.set("courseCode", `${courseCode}-badref`);
+    form.set("courseTitle", "Route Test Bad Ref");
+    form.set("moduleTitle", "Route Test Bad Ref Module");
+
+    const request = new NextRequest("http://localhost/api/admin/scorm-upload", {
+      method: "POST",
+      body: form,
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toMatch(/does_not_exist\.html/);
+
+    const rows = await db.select().from(courses).where(eq(courses.code, `${courseCode}-badref`));
+    expect(rows).toHaveLength(0);
+  });
 });

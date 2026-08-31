@@ -26,12 +26,17 @@ export async function POST(request: NextRequest) {
       return badRequest("attemptId must be a UUID");
     }
 
+    // SCORM 1.2's flattened CMI uses cmi.core.lesson_status/lesson_location;
+    // SCORM 2004 uses cmi.completion_status (no combined pass/fail - that's
+    // cmi.success_status, not tracked separately in this minimal slice) and
+    // cmi.location. Try 1.2's keys first, fall back to 2004's. suspend_data
+    // is the same key name in both versions.
+    const stringOrNull = (value: unknown) => (typeof value === "string" ? value : null);
     const lessonStatus =
-      typeof cmi["cmi.core.lesson_status"] === "string" ? (cmi["cmi.core.lesson_status"] as string) : null;
+      stringOrNull(cmi["cmi.core.lesson_status"]) ?? stringOrNull(cmi["cmi.completion_status"]);
     const lessonLocation =
-      typeof cmi["cmi.core.lesson_location"] === "string" ? (cmi["cmi.core.lesson_location"] as string) : null;
-    const suspendData =
-      typeof cmi["cmi.suspend_data"] === "string" ? (cmi["cmi.suspend_data"] as string) : null;
+      stringOrNull(cmi["cmi.core.lesson_location"]) ?? stringOrNull(cmi["cmi.location"]);
+    const suspendData = stringOrNull(cmi["cmi.suspend_data"]);
 
     const existing = await db
       .select()
