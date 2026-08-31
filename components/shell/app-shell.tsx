@@ -46,22 +46,26 @@ const adminNav = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [testRole, setTestRole] = useState<Role | null>(null);
+  const [testRole, setTestRoleState] = useState<Role | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { data: session, status } = useSession();
   const { resolvedTheme } = useTheme();
   const isAuthenticated = status === "authenticated";
   const real = isAuthenticated ? roleFromClaims(session?.user?.roles) : null;
-  const role: Role = testRole ?? real?.role ?? "Learner";
-  const roleLabel = testRole ?? real?.label ?? "Learner";
-  const isTestOverride = testRole !== null;
+  const canOverrideRole = real?.role === "Admin";
+  const activeOverride = canOverrideRole ? testRole : null;
+  const role: Role = activeOverride ?? real?.role ?? "Learner";
+  const roleLabel = activeOverride ?? real?.label ?? "Learner";
+  const isTestOverride = activeOverride !== null;
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- server has no localStorage; first client render must match SSR output, then update post-hydration
     setMounted(true);
     const stored = localStorage.getItem("sidebar-collapsed");
     if (stored) setCollapsed(stored === "true");
+    const storedRole = localStorage.getItem("test-role");
+    if (storedRole === "Learner" || storedRole === "Admin") setTestRoleState(storedRole);
   }, []);
 
   const toggleCollapsed = () => {
@@ -70,6 +74,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       localStorage.setItem("sidebar-collapsed", String(next));
       return next;
     });
+  };
+
+  const setTestRole = (next: Role | null) => {
+    setTestRoleState(next);
+    if (next) {
+      localStorage.setItem("test-role", next);
+    } else {
+      localStorage.removeItem("test-role");
+    }
   };
 
   const navItems = role === "Learner" ? learnerNav : adminNav;
@@ -87,7 +100,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
       >
         <div className="flex h-full w-64 flex-col">
-        <div className="flex items-center gap-2 px-5 py-5">
+        <div className="flex items-center px-5 py-5">
           <Image
             src={
               mounted && resolvedTheme === "dark"
@@ -95,14 +108,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 : "/logo-horizontal-blue.png"
             }
             alt="Sterling Seacrest Pritchard"
-            width={200}
-            height={26}
+            width={216}
+            height={28}
             priority
-            className="h-6 w-auto"
+            className="h-7 w-auto"
           />
-          <Badge variant="secondary" className="ml-auto">
-            demo
-          </Badge>
         </div>
         <Separator />
         <nav className="flex flex-1 flex-col gap-1 px-3 py-4">
@@ -160,34 +170,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <PanelLeftClose className="h-4 w-4" />
               )}
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={<button type="button" className="flex items-center gap-1.5 hover:text-foreground" />}
-              >
+            {canOverrideRole ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={<button type="button" className="flex items-center gap-1.5 hover:text-foreground" />}
+                >
+                  Viewing as <span className="font-medium text-foreground">{roleLabel}</span>
+                  {isTestOverride && (
+                    <Badge variant="outline" className="text-[10px]">
+                      test view
+                    </Badge>
+                  )}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={() => setTestRole("Learner")}>
+                    Learner
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTestRole("Admin")}>
+                    Admin
+                  </DropdownMenuItem>
+                  {isTestOverride && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setTestRole(null)}>
+                        Use real role ({real?.label})
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <span>
                 Viewing as <span className="font-medium text-foreground">{roleLabel}</span>
-                {isTestOverride && (
-                  <Badge variant="outline" className="text-[10px]">
-                    test view
-                  </Badge>
-                )}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem onClick={() => setTestRole("Learner")}>
-                  Learner
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTestRole("Admin")}>
-                  Admin
-                </DropdownMenuItem>
-                {isAuthenticated && isTestOverride && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setTestRole(null)}>
-                      Use real role ({real?.label})
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              </span>
+            )}
             {isAuthenticated && (
               <span className="ml-2 text-xs">(signed in as {displayName})</span>
             )}
