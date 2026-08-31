@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
@@ -38,14 +38,20 @@ const learnerNav = [
 ];
 
 const adminNav = [
-  { href: "/admin", label: "Content Authoring", icon: BookOpen },
+  { href: "/admin", label: "Home", icon: Home },
+  { href: "/admin/content", label: "Content Authoring", icon: BookOpen },
   { href: "/admin/videos", label: "Video Library", icon: Video },
   { href: "/admin/reports", label: "Reports", icon: BarChart3 },
   { href: "/admin/org", label: "Org Admin", icon: Users },
 ];
 
+function homeFor(role: Role) {
+  return role === "Admin" ? "/admin" : "/";
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [testRole, setTestRole] = useState<Role | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -78,7 +84,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     } else {
       localStorage.removeItem("test-role");
     }
+    router.push(homeFor(next ?? real?.role ?? "Learner"));
   };
+
+  useEffect(() => {
+    // Landing on "/" as a real Admin (e.g. right after signing in) would otherwise show the
+    // Learner home page under the Admin nav — send them to their own home instead.
+    if (pathname === "/" && role === "Admin") {
+      router.replace("/admin");
+    }
+  }, [pathname, role, router]);
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
