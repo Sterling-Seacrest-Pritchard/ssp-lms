@@ -22,7 +22,7 @@ export default async function LearnerScormPage(
   const contentUrl = `/api/scorm/content/${moduleId}/${info.launchUrl}`;
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4">
+    <div className="flex h-full w-full flex-col gap-4">
       <ScormPlayer
         moduleVersionId={moduleId}
         contentUrl={contentUrl}
