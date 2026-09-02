@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { courses } from "@/lib/mock-data/courses";
+import { getRealCourseDetail } from "@/lib/db/queries";
 
 const moduleIcon = {
   video: PlayCircle,
@@ -18,7 +19,53 @@ export default async function CourseDetailPage(props: PageProps<"/courses/[id]">
   const course = courses.find((c) => c.id === id);
 
   if (!course) {
-    notFound();
+    const realCourse = await getRealCourseDetail(id);
+    if (!realCourse) {
+      notFound();
+    }
+    return (
+      <div className="mx-auto flex max-w-4xl flex-col gap-6">
+        <div>
+          <Link href="/courses" className="text-sm text-muted-foreground hover:underline">
+            &larr; Back to Courses
+          </Link>
+          <div className="mt-4 flex items-center gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight">{realCourse.title}</h1>
+            <Badge variant="secondary" className="text-[10px]">
+              Live
+            </Badge>
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Modules</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col divide-y">
+            {realCourse.modules.length === 0 ? (
+              <p className="py-3 text-sm text-muted-foreground">
+                This course has no published modules yet.
+              </p>
+            ) : (
+              realCourse.modules.map((module) => (
+                <div
+                  key={module.id}
+                  className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+                >
+                  <Circle className="h-5 w-5 shrink-0 text-muted-foreground" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{module.title}</p>
+                  </div>
+                  <Link href={`/courses/${realCourse.id}/scorm/${module.moduleVersionId}`}>
+                    <Button size="sm">Start</Button>
+                  </Link>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
