@@ -8,6 +8,7 @@ type ScormApiInstance = InstanceType<typeof Scorm12API> | InstanceType<typeof Sc
 export interface UseScormRuntimeResult {
   attemptId: string | null;
   lastStatus: string;
+  error: string | null;
 }
 
 export function useScormRuntime(
@@ -17,6 +18,7 @@ export function useScormRuntime(
 ): UseScormRuntimeResult {
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const [lastStatus, setLastStatus] = useState<string>("not started");
+  const [error, setError] = useState<string | null>(null);
   const apiRef = useRef<ScormApiInstance | null>(null);
 
   useEffect(() => {
@@ -27,8 +29,14 @@ export function useScormRuntime(
         method: "POST",
         body: JSON.stringify({ moduleVersionId, userId }),
       });
+      if (!response.ok) {
+        throw new Error(`Failed to create SCORM attempt (status ${response.status})`);
+      }
       const body = await response.json();
       if (cancelled) return;
+      if (!body?.attemptId) {
+        throw new Error("Attempt creation response did not include an attemptId");
+      }
       setAttemptId(body.attemptId);
 
       // SCORM 1.2 SCOs look for `window.API` and call LMSInitialize/LMSCommit;
@@ -68,11 +76,14 @@ export function useScormRuntime(
       apiRef.current = api;
     }
 
-    createAttempt();
+    createAttempt().catch((err) => {
+      if (cancelled) return;
+      setError(err instanceof Error ? err.message : "Failed to start the SCORM runtime");
+    });
     return () => {
       cancelled = true;
     };
   }, [moduleVersionId, scormVersion, userId]);
 
-  return { attemptId, lastStatus };
+  return { attemptId, lastStatus, error };
 }

@@ -16,7 +16,7 @@ export function ScormPlayer({
   scormVersion: string;
   userId: string;
 }) {
-  const { attemptId, lastStatus } = useScormRuntime(moduleVersionId, scormVersion, userId);
+  const { attemptId, lastStatus, error } = useScormRuntime(moduleVersionId, scormVersion, userId);
   const isComplete = SUCCESS_STATUSES.has(lastStatus);
 
   return (
@@ -36,6 +36,10 @@ export function ScormPlayer({
         */}
         {attemptId ? (
           <iframe src={contentUrl} className="h-[70vh] w-full" title="Course content" />
+        ) : error ? (
+          <div className="flex h-[70vh] w-full items-center justify-center text-sm text-muted-foreground">
+            Couldn&apos;t start this module — try refreshing the page.
+          </div>
         ) : (
           <div className="flex h-[70vh] w-full items-center justify-center text-sm text-muted-foreground">
             Loading…

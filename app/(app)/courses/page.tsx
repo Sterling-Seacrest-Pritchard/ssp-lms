@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { courses } from "@/lib/mock-data/courses";
-import { listRealCourses } from "@/lib/db/queries";
+import { listRealCourses, type RealCourseSummary } from "@/lib/db/queries";
 
 const statusLabel: Record<string, string> = {
   "not-started": "Not started",
@@ -21,7 +21,13 @@ const statusVariant: Record<string, "secondary" | "default" | "outline"> = {
 export default async function CoursesPage() {
   const active = courses.filter((c) => c.status !== "completed");
   const finished = courses.filter((c) => c.status === "completed");
-  const realCourses = await listRealCourses();
+
+  let realCourses: RealCourseSummary[] = [];
+  try {
+    realCourses = await listRealCourses();
+  } catch {
+    // Real courses are additive; if the DB is unreachable, still render the mock sections.
+  }
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-10">
