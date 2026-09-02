@@ -22,3 +22,28 @@ export async function listRealCourses(): Promise<RealCourseSummary[]> {
     .groupBy(courses.id, courses.code, courses.title)
     .orderBy(courses.createdAt);
 }
+
+export interface RealCourseDetail {
+  id: string;
+  title: string;
+  modules: {
+    id: string;
+    title: string;
+    moduleVersionId: string;
+  }[];
+}
+
+export async function getRealCourseDetail(courseId: string): Promise<RealCourseDetail | null> {
+  const [course] = await db.select().from(courses).where(eq(courses.id, courseId));
+  if (!course) return null;
+
+  const courseModules = await db.select().from(modules).where(eq(modules.courseId, course.id));
+
+  return {
+    id: course.id,
+    title: course.title,
+    modules: courseModules
+      .filter((m) => m.currentVersionId !== null)
+      .map((m) => ({ id: m.id, title: m.title, moduleVersionId: m.currentVersionId as string })),
+  };
+}
