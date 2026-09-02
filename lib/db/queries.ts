@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "./client";
 import { courses, modules } from "./schema";
+import { isUuid } from "@/lib/api/errors";
 
 export interface RealCourseSummary {
   id: string;
@@ -15,7 +16,7 @@ export async function listRealCourses(): Promise<RealCourseSummary[]> {
       id: courses.id,
       code: courses.code,
       title: courses.title,
-      moduleCount: sql<number>`count(${modules.id})::int`,
+      moduleCount: sql<number>`count(${modules.id}) filter (where ${modules.currentVersionId} is not null)::int`,
     })
     .from(courses)
     .leftJoin(modules, eq(modules.courseId, courses.id))
@@ -34,6 +35,8 @@ export interface RealCourseDetail {
 }
 
 export async function getRealCourseDetail(courseId: string): Promise<RealCourseDetail | null> {
+  if (!isUuid(courseId)) return null;
+
   const [course] = await db.select().from(courses).where(eq(courses.id, courseId));
   if (!course) return null;
 
@@ -42,8 +45,10 @@ export async function getRealCourseDetail(courseId: string): Promise<RealCourseD
   return {
     id: course.id,
     title: course.title,
-    modules: courseModules
-      .filter((m) => m.currentVersionId !== null)
-      .map((m) => ({ id: m.id, title: m.title, moduleVersionId: m.currentVersionId as string })),
+    modules: courseModules.flatMap((m) =>
+      m.currentVersionId
+        ? [{ id: m.id, title: m.title, moduleVersionId: m.currentVersionId }]
+        : []
+    ),
   };
 }

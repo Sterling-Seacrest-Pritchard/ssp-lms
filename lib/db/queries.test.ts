@@ -11,27 +11,76 @@ describe("listRealCourses", () => {
   afterAll(async () => {
     const [course] = await db.select().from(courses).where(eq(courses.code, courseCode));
     if (course) {
+      const mods = await db.select().from(modules).where(eq(modules.courseId, course.id));
+      const moduleIds = mods.map((m) => m.id);
+      if (moduleIds.length) {
+        for (const moduleId of moduleIds) {
+          await db.update(modules).set({ currentVersionId: null }).where(eq(modules.id, moduleId));
+        }
+        const versions = await db
+          .select()
+          .from(moduleVersions)
+          .where(inArray(moduleVersions.moduleId, moduleIds));
+        if (versions.length) {
+          await db.delete(moduleVersions).where(inArray(moduleVersions.id, versions.map((v) => v.id)));
+        }
+      }
       await db.delete(modules).where(eq(modules.courseId, course.id));
       await db.delete(courses).where(eq(courses.id, course.id));
     }
   });
 
-  it("returns a course with its real module count", async () => {
+  it("counts only published modules, matching getRealCourseDetail's notion of a module", async () => {
     const [course] = await db
       .insert(courses)
       .values({ code: courseCode, title: "Queries Test Course" })
       .returning();
-    await db.insert(modules).values([
-      { courseId: course.id, moduleType: "scorm", title: "Module A" },
-      { courseId: course.id, moduleType: "scorm", title: "Module B" },
-    ]);
+    // "Module B" is intentionally left unpublished (no currentVersionId) to verify
+    // it's excluded from moduleCount.
+    const [publishedModule] = await db
+      .insert(modules)
+      .values([
+        { courseId: course.id, moduleType: "scorm", title: "Module A" },
+        { courseId: course.id, moduleType: "scorm", title: "Module B" },
+      ])
+      .returning();
+    const [version] = await db
+      .insert(moduleVersions)
+      .values({ moduleId: publishedModule.id, versionNumber: 1, status: "published" })
+      .returning();
+    await db
+      .update(modules)
+      .set({ currentVersionId: version.id })
+      .where(eq(modules.id, publishedModule.id));
 
     const results = await listRealCourses();
     const found = results.find((c) => c.id === course.id);
 
     expect(found).toBeDefined();
     expect(found?.title).toBe("Queries Test Course");
-    expect(found?.moduleCount).toBe(2);
+    expect(found?.moduleCount).toBe(1);
+  });
+
+  it("includes a course with zero published modules, at count 0", async () => {
+    const zeroModuleCourseCode = `${courseCode}-zero`;
+    const [course] = await db
+      .insert(courses)
+      .values({ code: zeroModuleCourseCode, title: "Zero Published Modules Course" })
+      .returning();
+    try {
+      await db
+        .insert(modules)
+        .values({ courseId: course.id, moduleType: "scorm", title: "Unpublished Only" });
+
+      const results = await listRealCourses();
+      const found = results.find((c) => c.id === course.id);
+
+      expect(found).toBeDefined();
+      expect(found?.moduleCount).toBe(0);
+    } finally {
+      await db.delete(modules).where(eq(modules.courseId, course.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+    }
   });
 });
 

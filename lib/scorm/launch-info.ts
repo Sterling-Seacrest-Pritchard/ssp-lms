@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { scormModuleVersions } from "@/lib/db/schema";
+import { isUuid } from "@/lib/api/errors";
 
 export interface ScormLaunchInfo {
   launchUrl: string;
@@ -11,6 +12,8 @@ export interface ScormLaunchInfo {
 export async function getScormLaunchInfo(
   moduleVersionId: string
 ): Promise<ScormLaunchInfo | null> {
+  if (!isUuid(moduleVersionId)) return null;
+
   const [row] = await db
     .select()
     .from(scormModuleVersions)
