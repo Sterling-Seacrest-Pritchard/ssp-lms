@@ -20,8 +20,8 @@ export async function PATCH(
     }
 
     const { moduleIds } = (body ?? {}) as { moduleIds?: unknown };
-    if (!Array.isArray(moduleIds) || !moduleIds.every((id) => typeof id === "string")) {
-      return badRequest("moduleIds must be an array of strings");
+    if (!Array.isArray(moduleIds) || !moduleIds.every((id) => typeof id === "string" && isUuid(id))) {
+      return badRequest("moduleIds must be an array of UUID strings");
     }
 
     await reorderModules(courseId, moduleIds);
