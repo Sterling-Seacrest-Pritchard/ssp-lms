@@ -53,17 +53,19 @@ export async function addVideoPlaceholderModule(
   title: string,
   durationMinutes: number | null
 ): Promise<{ moduleVersionId: string }> {
-  const [courseModule] = await db
-    .insert(modules)
-    .values({ courseId, moduleType: "video", title })
-    .returning();
-  const [version] = await db
-    .insert(moduleVersions)
-    .values({ moduleId: courseModule.id, versionNumber: 1, status: "published", publishedAt: new Date() })
-    .returning();
-  await db.insert(videoModuleVersions).values({ moduleVersionId: version.id, durationMinutes });
-  await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, courseModule.id));
-  return { moduleVersionId: version.id };
+  return db.transaction(async (tx) => {
+    const [courseModule] = await tx
+      .insert(modules)
+      .values({ courseId, moduleType: "video", title })
+      .returning();
+    const [version] = await tx
+      .insert(moduleVersions)
+      .values({ moduleId: courseModule.id, versionNumber: 1, status: "published", publishedAt: new Date() })
+      .returning();
+    await tx.insert(videoModuleVersions).values({ moduleVersionId: version.id, durationMinutes });
+    await tx.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, courseModule.id));
+    return { moduleVersionId: version.id };
+  });
 }
 
 export async function removeModule(courseId: string, moduleId: string): Promise<void> {
@@ -73,20 +75,22 @@ export async function removeModule(courseId: string, moduleId: string): Promise<
     .where(and(eq(modules.id, moduleId), eq(modules.courseId, courseId)));
   if (!courseModule) return;
 
-  await db.update(modules).set({ currentVersionId: null }).where(eq(modules.id, courseModule.id));
+  await db.transaction(async (tx) => {
+    await tx.update(modules).set({ currentVersionId: null }).where(eq(modules.id, courseModule.id));
 
-  const versions = await db
-    .select()
-    .from(moduleVersions)
-    .where(eq(moduleVersions.moduleId, courseModule.id));
-  const versionIds = versions.map((v) => v.id);
-  if (versionIds.length) {
-    await db.delete(scormModuleVersions).where(inArray(scormModuleVersions.moduleVersionId, versionIds));
-    await db.delete(videoModuleVersions).where(inArray(videoModuleVersions.moduleVersionId, versionIds));
-    await db.delete(moduleVersions).where(inArray(moduleVersions.id, versionIds));
-  }
+    const versions = await tx
+      .select()
+      .from(moduleVersions)
+      .where(eq(moduleVersions.moduleId, courseModule.id));
+    const versionIds = versions.map((v) => v.id);
+    if (versionIds.length) {
+      await tx.delete(scormModuleVersions).where(inArray(scormModuleVersions.moduleVersionId, versionIds));
+      await tx.delete(videoModuleVersions).where(inArray(videoModuleVersions.moduleVersionId, versionIds));
+      await tx.delete(moduleVersions).where(inArray(moduleVersions.id, versionIds));
+    }
 
-  await db.delete(modules).where(eq(modules.id, courseModule.id));
+    await tx.delete(modules).where(eq(modules.id, courseModule.id));
+  });
 }
 
 export async function reorderModules(courseId: string, orderedModuleIds: string[]): Promise<void> {
