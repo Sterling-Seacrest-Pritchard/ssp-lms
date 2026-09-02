@@ -3,6 +3,7 @@ import {
   uuid,
   text,
   integer,
+  boolean,
   timestamp,
   jsonb,
 } from "drizzle-orm/pg-core";
@@ -13,6 +14,10 @@ export const courses = pgTable("courses", {
   title: text("title").notNull(),
   description: text("description"),
   status: text("status").notNull().default("draft"),
+  department: text("department"),
+  thumbnail: text("thumbnail"),
+  compliance: boolean("compliance").notNull().default(false),
+  dueDate: timestamp("due_date", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -45,6 +50,13 @@ export const scormModuleVersions = pgTable("scorm_module_versions", {
   scormVersion: text("scorm_version").notNull().default("1.2"),
   launchUrl: text("launch_url").notNull(),
   rawManifestXml: text("raw_manifest_xml").notNull(),
+});
+
+export const videoModuleVersions = pgTable("video_module_versions", {
+  moduleVersionId: uuid("module_version_id")
+    .primaryKey()
+    .references(() => moduleVersions.id),
+  durationMinutes: integer("duration_minutes"),
 });
 
 export const moduleAttempts = pgTable("module_attempts", {
