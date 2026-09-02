@@ -147,23 +147,10 @@ export function BuilderClient({ initialCourse }: { initialCourse: CourseForBuild
       }),
     });
     if (response.ok) {
-      const { moduleVersionId } = await response.json();
-      setCourse((prev) => ({
-        ...prev,
-        modules: [
-          ...prev.modules,
-          {
-            id: moduleVersionId,
-            title: videoTitle,
-            moduleType: "video",
-            moduleVersionId,
-            sortOrder: prev.modules.length,
-          },
-        ],
-      }));
       setVideoTitle("");
       setVideoDuration("");
       setAddModuleOpen(false);
+      window.location.reload();
     }
   }
 
@@ -187,23 +174,11 @@ export function BuilderClient({ initialCourse }: { initialCourse: CourseForBuild
       setUploading(false);
       return;
     }
-    setCourse((prev) => ({
-      ...prev,
-      modules: [
-        ...prev.modules,
-        {
-          id: body.moduleVersionId,
-          title: scormTitle,
-          moduleType: "scorm",
-          moduleVersionId: body.moduleVersionId,
-          sortOrder: prev.modules.length,
-        },
-      ],
-    }));
     setScormFile(null);
     setScormTitle("");
     setUploading(false);
     setAddModuleOpen(false);
+    window.location.reload();
   }
 
   async function handlePublish() {
