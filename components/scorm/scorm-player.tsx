@@ -214,46 +214,45 @@ export function ScormPlayer({
             load-order race.
           */}
           {attemptId ? (
+            // A single stable <iframe> element across the nativeSize
+            // transition — react to it via inline style, never via a
+            // different conditional JSX branch. Two separate <iframe>
+            // elements in an if/else here previously made React unmount the
+            // first and mount a second once nativeSize was detected, forcing
+            // a real content reload mid-launch. Since a SCORM SCO's own
+            // unload handler calls Finish() on our shared window.API when
+            // its iframe is torn down, that reload terminated the runtime
+            // right as the reloaded content tried to Initialize on it —
+            // surfacing as "LMS is already finished!" on every launch, not
+            // just already-completed ones.
             <div className="flex h-full min-h-full w-full items-center justify-center">
-              {nativeSize ? (
-                // Outer box carries the true, scaled visual footprint so the
-                // scrollable box above sizes and centers correctly. Transform
-                // doesn't affect layout, so without this wrapper the parent
-                // would keep reserving only the iframe's unscaled (native)
-                // size, leaving an enlarged module clipped or mis-centered
-                // instead of properly contained/scrollable.
-                <div
-                  style={{
-                    width: nativeSize.w * effectiveScale,
-                    height: nativeSize.h * effectiveScale,
-                  }}
-                  className="relative shrink-0"
-                >
-                  <iframe
-                    ref={iframeRef}
-                    src={contentUrl}
-                    onLoad={handleIframeLoad}
-                    allow="fullscreen"
-                    title="Course content"
-                    style={{
-                      width: nativeSize.w,
-                      height: nativeSize.h,
-                      transform: `scale(${effectiveScale})`,
-                      transformOrigin: "top left",
-                    }}
-                    className="absolute left-0 top-0 border-0"
-                  />
-                </div>
-              ) : (
+              <div
+                style={
+                  nativeSize
+                    ? { width: nativeSize.w * effectiveScale, height: nativeSize.h * effectiveScale }
+                    : { width: "100%", height: "100%" }
+                }
+                className="relative shrink-0"
+              >
                 <iframe
                   ref={iframeRef}
                   src={contentUrl}
                   onLoad={handleIframeLoad}
                   allow="fullscreen"
                   title="Course content"
-                  className="h-full w-full"
+                  style={
+                    nativeSize
+                      ? {
+                          width: nativeSize.w,
+                          height: nativeSize.h,
+                          transform: `scale(${effectiveScale})`,
+                          transformOrigin: "top left",
+                        }
+                      : { width: "100%", height: "100%" }
+                  }
+                  className="absolute left-0 top-0 border-0"
                 />
-              )}
+              </div>
             </div>
           ) : error ? (
             <div className="flex h-full min-h-full w-full items-center justify-center text-sm text-muted-foreground">
