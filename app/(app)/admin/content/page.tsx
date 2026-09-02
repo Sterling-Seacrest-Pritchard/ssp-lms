@@ -5,10 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { courses as mockCourses } from "@/lib/mock-data/courses";
-import { listRealCourses } from "@/lib/db/queries";
+import { listRealCourses, type RealCourseSummary } from "@/lib/db/queries";
 
 export default async function ContentAuthoringPage() {
-  const realCourses = await listRealCourses();
+  let realCourses: RealCourseSummary[] = [];
+  try {
+    realCourses = await listRealCourses();
+  } catch {
+    // Real courses are additive; if the DB is unreachable, still render the mock rows.
+  }
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
