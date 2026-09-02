@@ -5,7 +5,7 @@ import { db } from "@/lib/db/client";
 import { courses, modules, moduleVersions, scormModuleVersions } from "@/lib/db/schema";
 import { parseManifest } from "@/lib/scorm/parse-manifest";
 import { readScormManifest, uploadScormPackage, assertLaunchFileExists } from "@/lib/scorm/extract-package";
-import { badRequest, serverError } from "@/lib/api/errors";
+import { badRequest, isUuid, serverError } from "@/lib/api/errors";
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,19 +17,22 @@ export async function POST(request: NextRequest) {
     }
 
     const file = formData.get("package");
+    const courseId = formData.get("courseId");
     const courseCode = formData.get("courseCode");
     const courseTitle = formData.get("courseTitle");
     const moduleTitle = formData.get("moduleTitle");
 
-    if (
-      !(file instanceof File) ||
-      typeof courseCode !== "string" ||
-      typeof courseTitle !== "string" ||
-      typeof moduleTitle !== "string"
-    ) {
+    if (!(file instanceof File) || typeof moduleTitle !== "string") {
+      return badRequest("package and moduleTitle are required");
+    }
+    const attachToExistingCourse = typeof courseId === "string" && courseId.length > 0;
+    if (!attachToExistingCourse && (typeof courseCode !== "string" || typeof courseTitle !== "string")) {
       return badRequest(
-        "package, courseCode, courseTitle, and moduleTitle are all required"
+        "courseCode and courseTitle are required unless courseId is provided"
       );
+    }
+    if (attachToExistingCourse && !isUuid(courseId as string)) {
+      return badRequest("courseId must be a UUID");
     }
 
     const zipBuffer = Buffer.from(await file.arrayBuffer());
@@ -56,10 +59,22 @@ export async function POST(request: NextRequest) {
 
     const { prefix } = await uploadScormPackage(zipBuffer, moduleVersionId);
 
-    const existing = await db.select().from(courses).where(eq(courses.code, courseCode));
-    const course =
-      existing[0] ??
-      (await db.insert(courses).values({ code: courseCode, title: courseTitle }).returning())[0];
+    let course: typeof courses.$inferSelect;
+    if (attachToExistingCourse) {
+      const [existing] = await db.select().from(courses).where(eq(courses.id, courseId as string));
+      if (!existing) {
+        return badRequest("No course exists with that courseId");
+      }
+      course = existing;
+    } else {
+      const existing = await db.select().from(courses).where(eq(courses.code, courseCode as string));
+      course =
+        existing[0] ??
+        (await db
+          .insert(courses)
+          .values({ code: courseCode as string, title: courseTitle as string })
+          .returning())[0];
+    }
 
     const [courseModule] = await db
       .insert(modules)

@@ -186,4 +186,41 @@ describe("POST /api/admin/scorm-upload", () => {
     const rows = await db.select().from(courses).where(eq(courses.code, `${courseCode}-badref`));
     expect(rows).toHaveLength(0);
   });
+
+  it("attaches to an existing course when courseId is provided, without needing courseCode/courseTitle", async () => {
+    const [existingCourse] = await db
+      .insert(courses)
+      .values({ code: `${courseCode}-attach`, title: "Attach Target Course" })
+      .returning();
+
+    const form = new FormData();
+    form.set(
+      "package",
+      new File([new Uint8Array(buildSamplePackage())], "package.zip", { type: "application/zip" })
+    );
+    form.set("courseId", existingCourse.id);
+    form.set("moduleTitle", "Attached Module");
+
+    const request = new NextRequest("http://localhost/api/admin/scorm-upload", {
+      method: "POST",
+      body: form,
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+
+    const attachedModule = await db.select().from(modules).where(eq(modules.courseId, existingCourse.id));
+    expect(attachedModule).toHaveLength(1);
+    expect(attachedModule[0].title).toBe("Attached Module");
+
+    await db.delete(scormModuleVersions).where(eq(scormModuleVersions.moduleVersionId, body.moduleVersionId));
+    await db.update(modules).set({ currentVersionId: null }).where(eq(modules.courseId, existingCourse.id));
+    await db.delete(moduleVersions).where(eq(moduleVersions.id, body.moduleVersionId));
+    await db.delete(modules).where(eq(modules.courseId, existingCourse.id));
+    await db.delete(courses).where(eq(courses.id, existingCourse.id));
+    const { data } = await supabaseStorage.from("scorm-packages").list(body.prefix);
+    const paths = (data ?? []).map((f) => `${body.prefix}/${f.name}`);
+    if (paths.length) await supabaseStorage.from("scorm-packages").remove(paths);
+  });
 });
