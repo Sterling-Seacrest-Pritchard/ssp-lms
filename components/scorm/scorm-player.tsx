@@ -1,11 +1,59 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Maximize2, Minimize2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { CheckCircle2, Maximize2, Minimize2, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { useScormRuntime } from "@/lib/scorm/use-scorm-runtime";
 import { Button } from "@/components/ui/button";
 
 const SUCCESS_STATUSES = new Set(["completed", "passed"]);
+
+const ZOOM_STEP = 0.25;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2.5;
+
+// Many SCORM authoring tools (Articulate Storyline in particular) render
+// their content at a fixed "story size" and never scale it up past 100%,
+// even when given a much larger iframe — enlarging the iframe alone just
+// adds blank space around unchanged-size content. To make the whole module
+// actually bigger, we read the content's true rendered size once it loads,
+// then apply our own CSS transform to the iframe as a single visual unit
+// (content + any of its own internal letterboxing together), scaled to
+// exactly fit the available area. This works regardless of whether the SCO
+// scales itself internally.
+function getIframeDocument(iframe: HTMLIFrameElement): Document | null {
+  try {
+    return iframe.contentDocument;
+  } catch {
+    return null; // cross-origin (shouldn't happen via the same-origin content proxy, but fail safe)
+  }
+}
+
+// Storyline's own internal scaler element — stable across Storyline 2 through
+// 360. offsetWidth/Height reflect the element's authored size regardless of
+// any transform:scale() Storyline itself has already applied to it.
+function detectStorylineSize(iframe: HTMLIFrameElement): { w: number; h: number } | null {
+  const doc = getIframeDocument(iframe);
+  const stage = doc?.getElementById("presentation");
+  if (stage && stage.offsetWidth > 0 && stage.offsetHeight > 0) {
+    return { w: stage.offsetWidth, h: stage.offsetHeight };
+  }
+  return null;
+}
+
+// Generic fallback for non-Storyline content: whatever the document rendered
+// at is treated as its native size. For genuinely responsive content this is
+// a no-op (it already matches whatever box the iframe was given) — only used
+// once we've given a Storyline-style scaler a real chance to appear first,
+// since body.scrollWidth/Height is available near-instantly and would
+// otherwise win the race before Storyline finishes rendering its own stage.
+function detectFallbackSize(iframe: HTMLIFrameElement): { w: number; h: number } | null {
+  const doc = getIframeDocument(iframe);
+  const { scrollWidth, scrollHeight } = doc?.body ?? {};
+  if (scrollWidth && scrollHeight) {
+    return { w: scrollWidth, h: scrollHeight };
+  }
+  return null;
+}
 
 export function ScormPlayer({
   moduleVersionId,
@@ -21,7 +69,12 @@ export function ScormPlayer({
   const { attemptId, lastStatus, error } = useScormRuntime(moduleVersionId, scormVersion, userId);
   const isComplete = SUCCESS_STATUSES.has(lastStatus);
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [nativeSize, setNativeSize] = useState<{ w: number; h: number } | null>(null);
+  const [availableSize, setAvailableSize] = useState<{ w: number; h: number } | null>(null);
+  const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -29,6 +82,47 @@ export function ScormPlayer({
     };
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  // Track how much space the player actually has, so the fit calculation
+  // stays correct across fullscreen toggles, window resizes, and sidebar
+  // collapse/expand. Read the size synchronously up front rather than
+  // waiting solely on the observer's first callback, so there's no render
+  // with a known container already in the DOM but availableSize still null.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setAvailableSize({ w: rect.width, h: rect.height });
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setAvailableSize({ w: width, h: height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const handleIframeLoad = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    // Give a Storyline-style scaler a real chance to appear before falling
+    // back — the fallback is available almost immediately and would
+    // otherwise win the race before Storyline finishes rendering its stage.
+    let attempts = 0;
+    const tryDetect = () => {
+      const size = detectStorylineSize(iframe);
+      if (size) {
+        setNativeSize(size);
+        return;
+      }
+      attempts += 1;
+      if (attempts < 6) {
+        setTimeout(tryDetect, 200);
+        return;
+      }
+      setNativeSize(detectFallbackSize(iframe));
+    };
+    tryDetect();
   }, []);
 
   const toggleFullscreen = () => {
@@ -39,8 +133,15 @@ export function ScormPlayer({
     }
   };
 
+  const fitScale =
+    nativeSize && availableSize && nativeSize.w > 0 && nativeSize.h > 0
+      ? Math.min(availableSize.w / nativeSize.w, availableSize.h / nativeSize.h)
+      : 1;
+  const effectiveScale = fitScale * zoom;
+  const zoomPercent = Math.round(zoom * 100);
+
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3">
       {isComplete && (
         <div className="flex items-center gap-2 text-sm font-medium text-emerald-600">
           <CheckCircle2 className="h-4 w-4" />
@@ -49,40 +150,121 @@ export function ScormPlayer({
       )}
       <div
         ref={containerRef}
-        className="relative min-h-[85vh] flex-1 overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10"
+        // Fixed height (not a min-height floor) so this box never grows to
+        // match its own zoomed content — a flex item's default
+        // `min-height: auto` would otherwise let it expand past its
+        // allotted space to fit oversized children, which feeds back into
+        // the ResizeObserver below and runs the fit-scale calculation away.
+        // This element (not the scroll box inside it) is the fullscreen
+        // target, so the zoom/fullscreen toolbar stays anchored to its
+        // corner regardless of how far the content beneath is scrolled.
+        className="relative h-[85vh] min-h-0 overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10"
       >
-        <Button
-          type="button"
-          variant="secondary"
-          size="icon-sm"
-          onClick={toggleFullscreen}
-          className="absolute right-3 top-3 z-10"
-          aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-        >
-          {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-        </Button>
-        {/*
-          Gate the iframe's mount on `attemptId`, same reasoning as the admin
-          harness: a SCORM SCO calls LMSInitialize/Initialize as soon as its
-          own document loads and expects window.API/API_1484_11 to already be
-          set. Mounting unconditionally risks an intermittent load-order race.
-        */}
-        {attemptId ? (
-          <iframe
-            src={contentUrl}
-            className="h-full min-h-[85vh] w-full"
-            allow="fullscreen"
-            title="Course content"
-          />
-        ) : error ? (
-          <div className="flex h-full min-h-[85vh] w-full items-center justify-center text-sm text-muted-foreground">
-            Couldn&apos;t start this module — try refreshing the page.
-          </div>
-        ) : (
-          <div className="flex h-full min-h-[85vh] w-full items-center justify-center text-sm text-muted-foreground">
-            Loading…
-          </div>
-        )}
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-lg bg-background/90 p-1 shadow-sm ring-1 ring-foreground/10">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setZoom((z) => Math.max(ZOOM_MIN, z - ZOOM_STEP))}
+            disabled={zoom <= ZOOM_MIN}
+            aria-label="Zoom out"
+          >
+            <ZoomOut className="h-4 w-4" />
+          </Button>
+          <span className="min-w-10 text-center text-xs tabular-nums text-muted-foreground">
+            {zoomPercent}%
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setZoom((z) => Math.min(ZOOM_MAX, z + ZOOM_STEP))}
+            disabled={zoom >= ZOOM_MAX}
+            aria-label="Zoom in"
+          >
+            <ZoomIn className="h-4 w-4" />
+          </Button>
+          {zoom !== 1 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setZoom(1)}
+              aria-label="Reset zoom"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={toggleFullscreen}
+            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          >
+            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
+        </div>
+        <div ref={scrollRef} className="h-full min-h-0 w-full overflow-auto">
+          {/*
+            Gate the iframe's mount on `attemptId`, same reasoning as the
+            admin harness: a SCORM SCO calls LMSInitialize/Initialize as soon
+            as its own document loads and expects window.API/API_1484_11 to
+            already be set. Mounting unconditionally risks an intermittent
+            load-order race.
+          */}
+          {attemptId ? (
+            <div className="flex h-full min-h-full w-full items-center justify-center">
+              {nativeSize ? (
+                // Outer box carries the true, scaled visual footprint so the
+                // scrollable box above sizes and centers correctly. Transform
+                // doesn't affect layout, so without this wrapper the parent
+                // would keep reserving only the iframe's unscaled (native)
+                // size, leaving an enlarged module clipped or mis-centered
+                // instead of properly contained/scrollable.
+                <div
+                  style={{
+                    width: nativeSize.w * effectiveScale,
+                    height: nativeSize.h * effectiveScale,
+                  }}
+                  className="relative shrink-0"
+                >
+                  <iframe
+                    ref={iframeRef}
+                    src={contentUrl}
+                    onLoad={handleIframeLoad}
+                    allow="fullscreen"
+                    title="Course content"
+                    style={{
+                      width: nativeSize.w,
+                      height: nativeSize.h,
+                      transform: `scale(${effectiveScale})`,
+                      transformOrigin: "top left",
+                    }}
+                    className="absolute left-0 top-0 border-0"
+                  />
+                </div>
+              ) : (
+                <iframe
+                  ref={iframeRef}
+                  src={contentUrl}
+                  onLoad={handleIframeLoad}
+                  allow="fullscreen"
+                  title="Course content"
+                  className="h-full w-full"
+                />
+              )}
+            </div>
+          ) : error ? (
+            <div className="flex h-full min-h-full w-full items-center justify-center text-sm text-muted-foreground">
+              Couldn&apos;t start this module — try refreshing the page.
+            </div>
+          ) : (
+            <div className="flex h-full min-h-full w-full items-center justify-center text-sm text-muted-foreground">
+              Loading…
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
