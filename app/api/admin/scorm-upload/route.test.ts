@@ -223,4 +223,29 @@ describe("POST /api/admin/scorm-upload", () => {
     const paths = (data ?? []).map((f) => `${body.prefix}/${f.name}`);
     if (paths.length) await supabaseStorage.from("scorm-packages").remove(paths);
   });
+
+  it("rejects attach mode with a valid-but-nonexistent courseId before uploading anything to Storage", async () => {
+    const nonexistentCourseId = randomUUID();
+
+    const form = new FormData();
+    form.set(
+      "package",
+      new File([new Uint8Array(buildSamplePackage())], "package.zip", { type: "application/zip" })
+    );
+    form.set("courseId", nonexistentCourseId);
+    form.set("moduleTitle", "Should Not Be Created");
+
+    const request = new NextRequest("http://localhost/api/admin/scorm-upload", {
+      method: "POST",
+      body: form,
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toMatch(/no course exists/i);
+    // No package upload should have been attempted for a rejected request, so
+    // the error response carries no Storage prefix to clean up.
+    expect(body.prefix).toBeUndefined();
+  });
 });

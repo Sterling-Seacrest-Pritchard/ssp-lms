@@ -35,6 +35,22 @@ export async function POST(request: NextRequest) {
       return badRequest("courseId must be a UUID");
     }
 
+    // Resolve (and validate) the attach-mode course BEFORE any Storage upload
+    // happens: a nonexistent courseId is a 400, and per the same principle as
+    // the manifest validation below, we must not write a package to Storage
+    // for a request we're about to reject.
+    // Definite-assignment assertion: TS can't see across the two `if`s below,
+    // but they exhaustively cover attachToExistingCourse true/false and each
+    // either assigns `course` or returns early.
+    let course!: typeof courses.$inferSelect;
+    if (attachToExistingCourse) {
+      const [existing] = await db.select().from(courses).where(eq(courses.id, courseId as string));
+      if (!existing) {
+        return badRequest("No course exists with that courseId");
+      }
+      course = existing;
+    }
+
     const zipBuffer = Buffer.from(await file.arrayBuffer());
     const moduleVersionId = randomUUID();
 
@@ -59,14 +75,7 @@ export async function POST(request: NextRequest) {
 
     const { prefix } = await uploadScormPackage(zipBuffer, moduleVersionId);
 
-    let course: typeof courses.$inferSelect;
-    if (attachToExistingCourse) {
-      const [existing] = await db.select().from(courses).where(eq(courses.id, courseId as string));
-      if (!existing) {
-        return badRequest("No course exists with that courseId");
-      }
-      course = existing;
-    } else {
+    if (!attachToExistingCourse) {
       const existing = await db.select().from(courses).where(eq(courses.code, courseCode as string));
       course =
         existing[0] ??
