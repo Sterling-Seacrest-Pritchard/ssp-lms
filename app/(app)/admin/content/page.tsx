@@ -1,18 +1,35 @@
+"use client";
+
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { courses as mockCourses } from "@/lib/mock-data/courses";
-import { listRealCourses, type RealCourseSummary } from "@/lib/db/queries";
+import type { RealCourseSummary } from "@/lib/db/queries";
 
-export default async function ContentAuthoringPage() {
-  let realCourses: RealCourseSummary[] = [];
-  try {
-    realCourses = await listRealCourses();
-  } catch {
-    // Real courses are additive; if the DB is unreachable, still render the mock rows.
+export default function ContentAuthoringPage() {
+  const router = useRouter();
+  const [realCourses, setRealCourses] = useState<
+    (RealCourseSummary & { status: string })[]
+  >([]);
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/admin/courses/list")
+      .then((res) => (res.ok ? res.json() : { courses: [] }))
+      .then((body) => setRealCourses(body.courses ?? []))
+      .catch(() => setRealCourses([]));
+  }, []);
+
+  async function handleNewCourse() {
+    setCreating(true);
+    const response = await fetch("/api/admin/courses", { method: "POST" });
+    const body = await response.json();
+    router.push(`/admin/content/builder/${body.courseId}`);
   }
 
   return (
@@ -21,15 +38,13 @@ export default async function ContentAuthoringPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Content Authoring</h1>
           <p className="text-sm text-muted-foreground">
-            Course, module, and quiz builder — SCORM package upload is the primary authoring path.
+            Build a course from one or more modules — SCORM packages and video placeholders.
           </p>
         </div>
-        <Link href="/admin/content/upload">
-          <Button>
-            <Plus className="h-4 w-4" />
-            New Course
-          </Button>
-        </Link>
+        <Button onClick={handleNewCourse} disabled={creating}>
+          <Plus className="h-4 w-4" />
+          New Course
+        </Button>
       </div>
 
       <Card>
@@ -56,17 +71,31 @@ export default async function ContentAuthoringPage() {
                       <Badge variant="secondary" className="text-[10px]">
                         Live
                       </Badge>
+                      <Badge
+                        variant={course.status === "published" ? "secondary" : "outline"}
+                        className="text-[10px]"
+                      >
+                        {course.status === "published" ? "Published" : "Draft"}
+                      </Badge>
                     </span>
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">—</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {course.department ?? "General"}
+                  </TableCell>
                   <TableCell>{course.moduleCount}</TableCell>
                   <TableCell>
-                    <span className="text-xs text-muted-foreground">—</span>
+                    {course.compliance ? (
+                      <Badge variant="secondary">Required</Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" disabled>
-                      Edit
-                    </Button>
+                    <Link href={`/admin/content/builder/${course.id}`}>
+                      <Button variant="ghost" size="sm">
+                        Edit
+                      </Button>
+                    </Link>
                   </TableCell>
                 </TableRow>
               ))}
