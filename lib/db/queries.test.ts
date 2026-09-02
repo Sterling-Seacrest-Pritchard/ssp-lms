@@ -100,15 +100,17 @@ describe("getRealCourseDetail", () => {
       .insert(courses)
       .values({ code: `${courseCode}-nopub`, title: "No Publish Test" })
       .returning();
-    await db
-      .insert(modules)
-      .values({ courseId: course.id, moduleType: "scorm", title: "Unpublished Module" });
+    try {
+      await db
+        .insert(modules)
+        .values({ courseId: course.id, moduleType: "scorm", title: "Unpublished Module" });
 
-    const result = await getRealCourseDetail(course.id);
+      const result = await getRealCourseDetail(course.id);
 
-    expect(result?.modules).toHaveLength(0);
-
-    await db.delete(modules).where(eq(modules.courseId, course.id));
-    await db.delete(courses).where(eq(courses.id, course.id));
+      expect(result?.modules).toHaveLength(0);
+    } finally {
+      await db.delete(modules).where(eq(modules.courseId, course.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+    }
   });
 });
