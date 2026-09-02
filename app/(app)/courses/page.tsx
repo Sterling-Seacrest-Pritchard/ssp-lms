@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { courses } from "@/lib/mock-data/courses";
+import { listRealCourses } from "@/lib/db/queries";
 
 const statusLabel: Record<string, string> = {
   "not-started": "Not started",
@@ -17,9 +18,10 @@ const statusVariant: Record<string, "secondary" | "default" | "outline"> = {
   completed: "secondary",
 };
 
-export default function CoursesPage() {
+export default async function CoursesPage() {
   const active = courses.filter((c) => c.status !== "completed");
   const finished = courses.filter((c) => c.status === "completed");
+  const realCourses = await listRealCourses();
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-10">
@@ -103,6 +105,33 @@ export default function CoursesPage() {
           </div>
         )}
       </div>
+
+      {realCourses.length > 0 && (
+        <div>
+          <h2 className="mb-4 text-lg font-medium">Live Courses</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {realCourses.map((course) => (
+              <Link key={course.id} href={`/courses/${course.id}`}>
+                <Card className="h-full transition-shadow hover:shadow-md">
+                  <CardHeader>
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="text-base leading-snug">{course.title}</CardTitle>
+                      <Badge variant="secondary" className="text-[10px]">
+                        Live
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-xs text-muted-foreground">
+                      {course.moduleCount} module{course.moduleCount === 1 ? "" : "s"}
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
