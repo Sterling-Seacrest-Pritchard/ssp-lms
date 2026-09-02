@@ -1,7 +1,7 @@
 import { describe, it, expect, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
-import { listRealCourses, getRealCourseDetail } from "./queries";
+import { listRealCourses, getRealCourseDetail, listPublishedCourses, getCourseForBuilder } from "./queries";
 import { db } from "./client";
 import { courses, modules, moduleVersions } from "./schema";
 
@@ -114,10 +114,23 @@ describe("getRealCourseDetail", () => {
     expect(result).toBeNull();
   });
 
+  it("returns null for a draft course (not yet published)", async () => {
+    const [course] = await db
+      .insert(courses)
+      .values({ code: `${courseCode}-draft`, title: "Draft Test Course" })
+      .returning();
+    try {
+      const result = await getRealCourseDetail(course.id);
+      expect(result).toBeNull();
+    } finally {
+      await db.delete(courses).where(eq(courses.id, course.id));
+    }
+  });
+
   it("returns the course with its modules, resolving each module's currentVersionId", async () => {
     const [course] = await db
       .insert(courses)
-      .values({ code: courseCode, title: "Detail Test Course" })
+      .values({ code: courseCode, title: "Detail Test Course", status: "published" })
       .returning();
     const [courseModule] = await db
       .insert(modules)
@@ -147,7 +160,7 @@ describe("getRealCourseDetail", () => {
   it("excludes modules with no currentVersionId (never had a version published)", async () => {
     const [course] = await db
       .insert(courses)
-      .values({ code: `${courseCode}-nopub`, title: "No Publish Test" })
+      .values({ code: `${courseCode}-nopub`, title: "No Publish Test", status: "published" })
       .returning();
     try {
       await db
@@ -161,5 +174,78 @@ describe("getRealCourseDetail", () => {
       await db.delete(modules).where(eq(modules.courseId, course.id));
       await db.delete(courses).where(eq(courses.id, course.id));
     }
+  });
+});
+
+describe("listPublishedCourses", () => {
+  const courseCode = `PUBLISHED-LIST-TEST-${randomUUID()}`;
+
+  afterAll(async () => {
+    await db.delete(courses).where(eq(courses.code, courseCode));
+    await db.delete(courses).where(eq(courses.code, `${courseCode}-draft`));
+  });
+
+  it("includes only published courses, with department/thumbnail/compliance/dueDate", async () => {
+    await db.insert(courses).values({
+      code: courseCode,
+      title: "Published List Test",
+      status: "published",
+      department: "Compliance",
+      thumbnail: "bg-gradient-to-br from-blue-500 to-indigo-600",
+      compliance: true,
+      dueDate: new Date("2026-12-01T00:00:00Z"),
+    });
+    await db.insert(courses).values({
+      code: `${courseCode}-draft`,
+      title: "Draft Should Be Excluded",
+    });
+
+    const results = await listPublishedCourses();
+    const found = results.find((c) => c.code === courseCode);
+    const draftFound = results.find((c) => c.code === `${courseCode}-draft`);
+
+    expect(found).toBeDefined();
+    expect(found?.department).toBe("Compliance");
+    expect(found?.thumbnail).toBe("bg-gradient-to-br from-blue-500 to-indigo-600");
+    expect(found?.compliance).toBe(true);
+    expect(found?.dueDate).toBeTruthy();
+    expect(draftFound).toBeUndefined();
+  });
+});
+
+describe("getCourseForBuilder", () => {
+  const courseCode = `BUILDER-TEST-${randomUUID()}`;
+
+  afterAll(async () => {
+    const [course] = await db.select().from(courses).where(eq(courses.code, courseCode));
+    if (course) {
+      await db.delete(modules).where(eq(modules.courseId, course.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+    }
+  });
+
+  it("returns a draft course with its modules regardless of publish status", async () => {
+    const [course] = await db
+      .insert(courses)
+      .values({ code: courseCode, title: "Builder Test Course" })
+      .returning();
+    await db.insert(modules).values({
+      courseId: course.id,
+      moduleType: "video",
+      title: "Builder Test Module",
+      sortOrder: 0,
+    });
+
+    const result = await getCourseForBuilder(course.id);
+
+    expect(result).not.toBeNull();
+    expect(result?.status).toBe("draft");
+    expect(result?.modules).toHaveLength(1);
+    expect(result?.modules[0].moduleType).toBe("video");
+  });
+
+  it("returns null for an unknown course id", async () => {
+    const result = await getCourseForBuilder(randomUUID());
+    expect(result).toBeNull();
   });
 });
