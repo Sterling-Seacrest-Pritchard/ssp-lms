@@ -34,3 +34,14 @@ export async function countMuxAssets(): Promise<number> {
   }
   return count;
 }
+
+/**
+ * A 2-hour expiration comfortably covers one viewing session without needing
+ * a token-refresh mechanism in the player. `signPlaybackId` is async against
+ * the installed SDK's types (it returns `Promise<string>` for a single
+ * `type`), so this helper is async too.
+ */
+export async function signPlaybackToken(muxPlaybackId: string): Promise<string> {
+  const mux = getMuxClient();
+  return mux.jwt.signPlaybackId(muxPlaybackId, { expiration: "2h", type: "video" });
+}

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { courses } from "@/lib/mock-data/courses";
 import { getRealCourseDetail } from "@/lib/db/queries";
 import { getLatestLessonStatus } from "@/lib/scorm/completion-status";
+import { getLatestVideoStatus } from "@/lib/video/completion-status";
 import { isTrackedModuleType } from "@/lib/scorm/course-progress";
 import { auth } from "@/auth";
 
@@ -38,12 +39,24 @@ export default async function CourseDetailPage(props: PageProps<"/courses/[id]">
         // course below 100% forever. Same rule as
         // `getCourseProgressForLearner`, which drives the course list card.
         const launchable = isTrackedModuleType(module.moduleType);
-        const lessonStatus =
-          userId && launchable ? await getLatestLessonStatus(module.moduleVersionId, userId) : null;
+        // Video and SCORM report completion differently: video's only
+        // finished status is "completed", while SCORM also treats "passed"
+        // as finished. Mirrors the same per-type split already used by
+        // `isModuleFinishedForUser` in lib/scorm/course-progress.ts.
+        let done = false;
+        if (userId && launchable) {
+          if (module.moduleType === "video") {
+            const videoStatus = await getLatestVideoStatus(module.moduleVersionId, userId);
+            done = videoStatus === "completed";
+          } else {
+            const lessonStatus = await getLatestLessonStatus(module.moduleVersionId, userId);
+            done = lessonStatus === "completed" || lessonStatus === "passed";
+          }
+        }
         return {
           ...module,
           launchable,
-          done: lessonStatus === "completed" || lessonStatus === "passed",
+          done,
         };
       })
     );
@@ -109,7 +122,13 @@ export default async function CourseDetailPage(props: PageProps<"/courses/[id]">
                     )}
                   </div>
                   {module.launchable ? (
-                    <Link href={`/courses/${realCourse.id}/scorm/${module.moduleVersionId}`}>
+                    <Link
+                      href={
+                        module.moduleType === "video"
+                          ? `/courses/${realCourse.id}/video/${module.moduleVersionId}`
+                          : `/courses/${realCourse.id}/scorm/${module.moduleVersionId}`
+                      }
+                    >
                       <Button variant={module.done ? "outline" : "default"} size="sm">
                         {module.done ? "Review" : "Start"}
                       </Button>
