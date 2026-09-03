@@ -17,6 +17,7 @@ import {
   moduleVersions,
   scormAttemptState,
   scormModuleVersions,
+  videoAttemptState,
   videoModuleVersions,
 } from "./schema";
 import { uploadScormPackage } from "@/lib/scorm/extract-package";
@@ -186,6 +187,56 @@ describe("removeModule", () => {
           .where(eq(scormAttemptState.moduleAttemptId, attempt.id))
       ).toHaveLength(0);
     } finally {
+      await db.delete(courses).where(eq(courses.id, courseId));
+    }
+  });
+
+  it("removes a video module a learner has already watched, deleting its video attempt state", async () => {
+    const { id: courseId } = await createDraftCourse();
+    const userId = `remove-video-module-test-${randomUUID()}@example.com`;
+    const deleteSpy = vi.fn().mockResolvedValue(undefined);
+    try {
+      // A real, ready video module (with a Mux asset) plus a real committed
+      // learner attempt - the exact shape that used to raise an FK violation
+      // on video_attempt_state and abort the whole removal transaction,
+      // permanently wedging the module's slot against the Mux free-tier cap.
+      const { moduleVersionId } = await addVideoModuleForTest(courseId);
+      const [mod] = await db.select().from(modules).where(eq(modules.currentVersionId, moduleVersionId));
+      const [attempt] = await db
+        .insert(moduleAttempts)
+        .values({ moduleVersionId, userId, attemptNumber: 1 })
+        .returning();
+      await db.insert(videoAttemptState).values({
+        moduleAttemptId: attempt.id,
+        furthestWatchedSeconds: 42,
+        lastPositionSeconds: 42,
+        status: "in_progress",
+      });
+
+      vi.spyOn(await import("@/lib/video/mux-client"), "getMuxClient").mockReturnValue({
+        video: { assets: { delete: deleteSpy } },
+      } as unknown as ReturnType<typeof import("@/lib/video/mux-client").getMuxClient>);
+
+      await removeModule(courseId, mod.id);
+
+      expect(await db.select().from(modules).where(eq(modules.courseId, courseId))).toHaveLength(0);
+      expect(
+        await db
+          .select()
+          .from(videoAttemptState)
+          .where(eq(videoAttemptState.moduleAttemptId, attempt.id))
+      ).toHaveLength(0);
+      expect(
+        await db.select().from(moduleAttempts).where(eq(moduleAttempts.id, attempt.id))
+      ).toHaveLength(0);
+      expect(
+        await db
+          .select()
+          .from(videoModuleVersions)
+          .where(eq(videoModuleVersions.moduleVersionId, moduleVersionId))
+      ).toHaveLength(0);
+    } finally {
+      vi.restoreAllMocks();
       await db.delete(courses).where(eq(courses.id, courseId));
     }
   });

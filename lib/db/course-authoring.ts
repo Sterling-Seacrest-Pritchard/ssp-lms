@@ -8,6 +8,7 @@ import {
   moduleVersions,
   scormAttemptState,
   scormModuleVersions,
+  videoAttemptState,
   videoModuleVersions,
 } from "./schema";
 import { isUuid } from "@/lib/api/errors";
@@ -100,7 +101,12 @@ export async function removeModule(courseId: string, moduleId: string): Promise<
       // module_versions row while any attempt still references it raises a FK
       // violation that aborts this whole transaction - i.e. removing a module
       // any learner has ever started would 500. Same FK order as the test
-      // cleanup helpers: scorm_attempt_state -> module_attempts.
+      // cleanup helpers: the per-type attempt-state tables
+      // (scorm_attempt_state, video_attempt_state - both also `onDelete: no
+      // action` against module_attempts) -> module_attempts. Missing either
+      // state table here 500s the removal, and for a video module that
+      // matters twice over: removal is the only way to free a slot against
+      // the Mux free-tier asset cap.
       const attempts = await tx
         .select({ id: moduleAttempts.id })
         .from(moduleAttempts)
@@ -110,6 +116,9 @@ export async function removeModule(courseId: string, moduleId: string): Promise<
         await tx
           .delete(scormAttemptState)
           .where(inArray(scormAttemptState.moduleAttemptId, attemptIds));
+        await tx
+          .delete(videoAttemptState)
+          .where(inArray(videoAttemptState.moduleAttemptId, attemptIds));
         await tx.delete(moduleAttempts).where(inArray(moduleAttempts.id, attemptIds));
       }
 
