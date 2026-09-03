@@ -8,6 +8,8 @@ import { getLatestVideoStatus } from "@/lib/video/completion-status";
 import { signPlaybackToken } from "@/lib/video/mux-client";
 import { MuxVideoPlayer } from "@/components/video/mux-video-player";
 import { isAdminRole } from "@/lib/roles";
+import { UnavailableState } from "@/components/ui/unavailable-state";
+import { isNextNotFoundError } from "@/lib/utils";
 
 export default async function VideoPage(props: PageProps<"/courses/[id]/video/[moduleId]">) {
   const { id, moduleId } = await props.params;
@@ -26,39 +28,46 @@ export default async function VideoPage(props: PageProps<"/courses/[id]/video/[m
       notFound();
     }
 
-    const info = await getVideoLaunchInfo(moduleId);
-    if (!info) {
-      notFound();
-    }
+    try {
+      const info = await getVideoLaunchInfo(moduleId);
+      if (!info) {
+        notFound();
+      }
 
-    const status = await getLatestVideoStatus(moduleId, userId);
-    if (status === "completed") {
+      const status = await getLatestVideoStatus(moduleId, userId);
+      if (status === "completed") {
+        return (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center">
+            <CheckCircle2 className="h-10 w-10 text-emerald-600" />
+            <p className="text-lg font-medium">Video complete</p>
+            <p className="text-sm text-muted-foreground">
+              You&apos;ve already completed this video.
+            </p>
+          </div>
+        );
+      }
+
+      const token = await signPlaybackToken(info.muxPlaybackId);
+      const isAdmin = isAdminRole(session?.user?.roles);
+
       return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center">
-          <CheckCircle2 className="h-10 w-10 text-emerald-600" />
-          <p className="text-lg font-medium">Video complete</p>
-          <p className="text-sm text-muted-foreground">
-            You&apos;ve already completed this video.
-          </p>
+        <div className="flex h-full w-full flex-col gap-4">
+          <MuxVideoPlayer
+            playbackId={info.muxPlaybackId}
+            playbackToken={token}
+            durationSeconds={info.durationSeconds}
+            moduleVersionId={moduleId}
+            initialFurthestWatchedSeconds={0}
+            isAdmin={isAdmin}
+          />
         </div>
       );
+    } catch (err) {
+      if (isNextNotFoundError(err)) {
+        throw err;
+      }
+      return <UnavailableState message="Could not load this video right now. Please try again in a moment." />;
     }
-
-    const token = await signPlaybackToken(info.muxPlaybackId);
-    const isAdmin = isAdminRole(session?.user?.roles);
-
-    return (
-      <div className="flex h-full w-full flex-col gap-4">
-        <MuxVideoPlayer
-          playbackId={info.muxPlaybackId}
-          playbackToken={token}
-          durationSeconds={info.durationSeconds}
-          moduleVersionId={moduleId}
-          initialFurthestWatchedSeconds={0}
-          isAdmin={isAdmin}
-        />
-      </div>
-    );
   }
 
   return (

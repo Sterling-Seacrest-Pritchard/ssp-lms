@@ -11,6 +11,8 @@ import { getLatestLessonStatus } from "@/lib/scorm/completion-status";
 import { getLatestVideoStatus } from "@/lib/video/completion-status";
 import { getTrackedModuleVersionIds } from "@/lib/scorm/course-progress";
 import { auth } from "@/auth";
+import { UnavailableState } from "@/components/ui/unavailable-state";
+import { isNextNotFoundError } from "@/lib/utils";
 
 const moduleIcon = {
   video: PlayCircle,
@@ -23,53 +25,61 @@ export default async function CourseDetailPage(props: PageProps<"/courses/[id]">
   const course = courses.find((c) => c.id === id);
 
   if (!course) {
-    const realCourse = await getRealCourseDetail(id);
-    if (!realCourse) {
-      notFound();
-    }
+    let realCourse, modulesWithStatus, progress;
+    try {
+      realCourse = await getRealCourseDetail(id);
+      if (!realCourse) {
+        notFound();
+      }
 
-    const session = await auth();
-    const userId = session?.user?.email;
+      const session = await auth();
+      const userId = session?.user?.email;
 
-    // A module is only launchable if it has a player AND something to play.
-    // For video that means the Mux asset is actually `ready` - one still
-    // uploading/processing, or `errored`, has no playable video, so it is
-    // shown as not-yet-available and kept out of the progress fraction:
-    // counting it would pin this course below 100% forever. Resolved for the
-    // whole course in one query, and it is the same rule
-    // `getCourseProgressForLearner` applies to the course list card.
-    const trackedIds = await getTrackedModuleVersionIds(realCourse.modules);
+      // A module is only launchable if it has a player AND something to play.
+      // For video that means the Mux asset is actually `ready` - one still
+      // uploading/processing, or `errored`, has no playable video, so it is
+      // shown as not-yet-available and kept out of the progress fraction:
+      // counting it would pin this course below 100% forever. Resolved for the
+      // whole course in one query, and it is the same rule
+      // `getCourseProgressForLearner` applies to the course list card.
+      const trackedIds = await getTrackedModuleVersionIds(realCourse.modules);
 
-    const modulesWithStatus = await Promise.all(
-      realCourse.modules.map(async (module) => {
-        const launchable = trackedIds.has(module.moduleVersionId);
-        // Video and SCORM report completion differently: video's only
-        // finished status is "completed", while SCORM also treats "passed"
-        // as finished. Mirrors the same per-type split already used by
-        // `isModuleFinishedForUser` in lib/scorm/course-progress.ts.
-        let done = false;
-        if (userId && launchable) {
-          if (module.moduleType === "video") {
-            const videoStatus = await getLatestVideoStatus(module.moduleVersionId, userId);
-            done = videoStatus === "completed";
-          } else {
-            const lessonStatus = await getLatestLessonStatus(module.moduleVersionId, userId);
-            done = lessonStatus === "completed" || lessonStatus === "passed";
+      modulesWithStatus = await Promise.all(
+        realCourse.modules.map(async (module) => {
+          const launchable = trackedIds.has(module.moduleVersionId);
+          // Video and SCORM report completion differently: video's only
+          // finished status is "completed", while SCORM also treats "passed"
+          // as finished. Mirrors the same per-type split already used by
+          // `isModuleFinishedForUser` in lib/scorm/course-progress.ts.
+          let done = false;
+          if (userId && launchable) {
+            if (module.moduleType === "video") {
+              const videoStatus = await getLatestVideoStatus(module.moduleVersionId, userId);
+              done = videoStatus === "completed";
+            } else {
+              const lessonStatus = await getLatestLessonStatus(module.moduleVersionId, userId);
+              done = lessonStatus === "completed" || lessonStatus === "passed";
+            }
           }
-        }
-        return {
-          ...module,
-          launchable,
-          done,
-        };
-      })
-    );
-    const trackedModules = modulesWithStatus.filter((m) => m.launchable);
-    const completedCount = trackedModules.filter((m) => m.done).length;
-    const progress =
-      trackedModules.length === 0
-        ? 0
-        : Math.round((completedCount / trackedModules.length) * 100);
+          return {
+            ...module,
+            launchable,
+            done,
+          };
+        })
+      );
+      const trackedModules = modulesWithStatus.filter((m) => m.launchable);
+      const completedCount = trackedModules.filter((m) => m.done).length;
+      progress =
+        trackedModules.length === 0
+          ? 0
+          : Math.round((completedCount / trackedModules.length) * 100);
+    } catch (err) {
+      if (isNextNotFoundError(err)) {
+        throw err;
+      }
+      return <UnavailableState message="Could not load this course right now. Please try again in a moment." />;
+    }
 
     return (
       <div className="mx-auto flex max-w-4xl flex-col gap-6">
