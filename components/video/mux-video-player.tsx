@@ -8,11 +8,21 @@ const TOLERANCE_SECONDS = 3;
 const COMMIT_INTERVAL_MS = 15_000;
 
 export function MuxVideoPlayer({
+  playbackId,
   playbackToken,
   durationSeconds,
   moduleVersionId,
   initialFurthestWatchedSeconds,
 }: {
+  /**
+   * The raw Mux playback id. Required - `@mux/mux-player` builds the video
+   * `src` from this and will render an empty player without it; it does NOT
+   * derive the id from the signed token. Shipping the id to the client is
+   * safe under the "signed" playback policy these assets use: the id alone
+   * gets you nothing without the signed token below, which is the whole
+   * point of that policy.
+   */
+  playbackId: string;
   playbackToken: string;
   durationSeconds: number;
   moduleVersionId: string;
@@ -94,7 +104,7 @@ export function MuxVideoPlayer({
   return (
     <MuxPlayer
       ref={playerRef}
-      playbackId={undefined}
+      playbackId={playbackId}
       tokens={{ playback: playbackToken }}
       startTime={initialFurthestWatchedSeconds}
       onLoadedMetadata={() => {

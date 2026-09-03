@@ -48,6 +48,7 @@ export default async function VideoPage(props: PageProps<"/courses/[id]/video/[m
     return (
       <div className="flex h-full w-full flex-col gap-4">
         <MuxVideoPlayer
+          playbackId={info.muxPlaybackId}
           playbackToken={token}
           durationSeconds={info.durationSeconds}
           moduleVersionId={moduleId}
