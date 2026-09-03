@@ -100,7 +100,10 @@ export function BuilderClient({ initialCourse }: { initialCourse: CourseForBuild
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
-  const [videoDuration, setVideoDuration] = useState("");
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoUploading, setVideoUploading] = useState(false);
+  const [videoStatus, setVideoStatus] = useState<string | null>(null);
+  const [videoError, setVideoError] = useState<string | null>(null);
   const [scormFile, setScormFile] = useState<File | null>(null);
   const [scormTitle, setScormTitle] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -148,19 +151,54 @@ export function BuilderClient({ initialCourse }: { initialCourse: CourseForBuild
 
   async function handleAddVideo(e: React.FormEvent) {
     e.preventDefault();
-    const response = await fetch(`/api/admin/courses/${course.id}/modules/video`, {
-      method: "POST",
-      body: JSON.stringify({
-        title: videoTitle,
-        durationMinutes: videoDuration ? Number(videoDuration) : null,
-      }),
-    });
-    if (response.ok) {
-      setVideoTitle("");
-      setVideoDuration("");
-      setAddModuleOpen(false);
-      window.location.reload();
+    if (!videoFile) {
+      setVideoError("Choose a video file to upload");
+      return;
     }
+    setVideoUploading(true);
+    setVideoError(null);
+    setVideoStatus("waiting");
+
+    const createResponse = await fetch(`/api/admin/courses/${course.id}/modules/video`, {
+      method: "POST",
+      body: JSON.stringify({ title: videoTitle }),
+    });
+    const createBody = await createResponse.json();
+    if (!createResponse.ok) {
+      setVideoError(createBody.error ?? "Could not start the upload");
+      setVideoUploading(false);
+      setVideoStatus(null);
+      return;
+    }
+
+    const putResponse = await fetch(createBody.uploadUrl, { method: "PUT", body: videoFile });
+    if (!putResponse.ok) {
+      setVideoError("Upload to Mux failed");
+      setVideoUploading(false);
+      setVideoStatus(null);
+      return;
+    }
+
+    setVideoStatus("preparing");
+    const { moduleId } = createBody;
+    const poll = async () => {
+      const statusResponse = await fetch(`/api/admin/courses/${course.id}/modules/${moduleId}/video-status`);
+      const statusBody = await statusResponse.json();
+      if (statusBody.status === "ready" || statusBody.status === "errored") {
+        setVideoStatus(statusBody.status);
+        setVideoUploading(false);
+        if (statusBody.status === "ready") {
+          setVideoTitle("");
+          setVideoFile(null);
+          setAddModuleOpen(false);
+          window.location.reload();
+        }
+        return;
+      }
+      setVideoStatus(statusBody.status);
+      setTimeout(poll, 3000);
+    };
+    poll();
   }
 
   async function handleUploadScorm(e: React.FormEvent) {
@@ -311,7 +349,7 @@ export function BuilderClient({ initialCourse }: { initialCourse: CourseForBuild
               <Tabs defaultValue="scorm">
                 <TabsList>
                   <TabsTrigger value="scorm">Upload SCORM Package</TabsTrigger>
-                  <TabsTrigger value="video">Add Video Placeholder</TabsTrigger>
+                  <TabsTrigger value="video">Upload Video</TabsTrigger>
                 </TabsList>
                 <TabsContent value="scorm">
                   <form onSubmit={handleUploadScorm} className="flex flex-col gap-4 pt-4">
@@ -363,18 +401,30 @@ export function BuilderClient({ initialCourse }: { initialCourse: CourseForBuild
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="videoDuration">Estimated Duration (minutes)</Label>
-                      <Input
-                        id="videoDuration"
-                        type="number"
-                        min={0}
-                        value={videoDuration}
-                        onChange={(e) => setVideoDuration(e.target.value)}
+                      <Label htmlFor="videoFile">Video File</Label>
+                      <input
+                        id="videoFile"
+                        type="file"
+                        accept="video/*"
+                        onChange={(e) => setVideoFile(e.target.files?.[0] ?? null)}
                       />
+                      {videoFile && (
+                        <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <PlayCircle className="h-3.5 w-3.5" />
+                          {videoFile.name}
+                        </p>
+                      )}
                     </div>
-                    <Button type="submit">
-                      <PlayCircle className="h-4 w-4" />
-                      Add Video Placeholder
+                    {videoStatus && (
+                      <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                        {videoUploading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        Status: {videoStatus}
+                      </p>
+                    )}
+                    {videoError && <p className="text-sm text-destructive">{videoError}</p>}
+                    <Button type="submit" disabled={videoUploading}>
+                      {videoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+                      {videoUploading ? "Uploading…" : "Upload Video"}
                     </Button>
                   </form>
                 </TabsContent>
