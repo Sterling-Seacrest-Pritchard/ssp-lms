@@ -1,0 +1,1 @@
+ALTER TABLE "video_module_versions" DROP COLUMN "duration_minutes";

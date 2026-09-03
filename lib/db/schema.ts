@@ -56,7 +56,11 @@ export const videoModuleVersions = pgTable("video_module_versions", {
   moduleVersionId: uuid("module_version_id")
     .primaryKey()
     .references(() => moduleVersions.id),
-  durationMinutes: integer("duration_minutes"),
+  muxUploadId: text("mux_upload_id"),
+  muxAssetId: text("mux_asset_id"),
+  muxPlaybackId: text("mux_playback_id"),
+  status: text("status").notNull().default("waiting"),
+  durationSeconds: integer("duration_seconds"),
 });
 
 export const moduleAttempts = pgTable("module_attempts", {
@@ -79,5 +83,15 @@ export const scormAttemptState = pgTable("scorm_attempt_state", {
   lessonLocation: text("lesson_location"),
   suspendData: text("suspend_data"),
   rawCmi: jsonb("raw_cmi").notNull().default({}),
+  lastCommitAt: timestamp("last_commit_at", { withTimezone: true }),
+});
+
+export const videoAttemptState = pgTable("video_attempt_state", {
+  moduleAttemptId: uuid("module_attempt_id")
+    .primaryKey()
+    .references(() => moduleAttempts.id),
+  furthestWatchedSeconds: integer("furthest_watched_seconds").notNull().default(0),
+  lastPositionSeconds: integer("last_position_seconds").notNull().default(0),
+  status: text("status").notNull().default("in_progress"),
   lastCommitAt: timestamp("last_commit_at", { withTimezone: true }),
 });

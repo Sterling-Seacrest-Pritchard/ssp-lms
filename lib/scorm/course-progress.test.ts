@@ -9,7 +9,24 @@ import {
   moduleVersions,
   moduleAttempts,
   scormAttemptState,
+  videoAttemptState,
+  videoModuleVersions,
 } from "@/lib/db/schema";
+
+/**
+ * A video module is only tracked once its Mux asset is `ready`, so every
+ * video module in these tests needs a real video_module_versions row - the
+ * same shape the video-status poll writes once Mux finishes processing.
+ */
+async function markVideoReady(moduleVersionId: string) {
+  await db.insert(videoModuleVersions).values({
+    moduleVersionId,
+    muxAssetId: `asset-${randomUUID()}`,
+    muxPlaybackId: `playback-${randomUUID()}`,
+    status: "ready",
+    durationSeconds: 60,
+  });
+}
 
 describe("getCourseProgressForLearner", () => {
   const courseCode = `COURSE-PROGRESS-TEST-${randomUUID()}`;
@@ -40,7 +57,11 @@ describe("getCourseProgressForLearner", () => {
           .from(moduleVersions)
           .where(inArray(moduleVersions.moduleId, moduleIds));
         if (versions.length) {
-          await db.delete(moduleVersions).where(inArray(moduleVersions.id, versions.map((v) => v.id)));
+          const versionIds = versions.map((v) => v.id);
+          await db
+            .delete(videoModuleVersions)
+            .where(inArray(videoModuleVersions.moduleVersionId, versionIds));
+          await db.delete(moduleVersions).where(inArray(moduleVersions.id, versionIds));
         }
         await db.delete(modules).where(inArray(modules.id, moduleIds));
       }
@@ -104,7 +125,7 @@ describe("getCourseProgressForLearner", () => {
     }
   });
 
-  it("reaches completed when every SCORM module is done, ignoring untracked video placeholders", async () => {
+  it("does not ignore an unfinished video module - only the SCORM module being done leaves it in-progress", async () => {
     const [course] = await db
       .insert(courses)
       .values({
@@ -119,7 +140,7 @@ describe("getCourseProgressForLearner", () => {
       .returning();
     const [videoModule] = await db
       .insert(modules)
-      .values({ courseId: course.id, moduleType: "video", title: "Video Placeholder" })
+      .values({ courseId: course.id, moduleType: "video", title: "Video Module" })
       .returning();
     const [scormVersion] = await db
       .insert(moduleVersions)
@@ -137,6 +158,77 @@ describe("getCourseProgressForLearner", () => {
       .update(modules)
       .set({ currentVersionId: videoVersion.id })
       .where(eq(modules.id, videoModule.id));
+    await markVideoReady(videoVersion.id);
+    const [attempt] = await db
+      .insert(moduleAttempts)
+      .values({ moduleVersionId: scormVersion.id, userId, attemptNumber: 1 })
+      .returning();
+    await db
+      .insert(scormAttemptState)
+      .values({ moduleAttemptId: attempt.id, lessonStatus: "completed", rawCmi: {} });
+
+    try {
+      const result = await getCourseProgressForLearner(course.id, userId);
+
+      expect(result).toEqual({ status: "in-progress", progress: 50 });
+    } finally {
+      await db.delete(scormAttemptState).where(eq(scormAttemptState.moduleAttemptId, attempt.id));
+      await db.delete(moduleAttempts).where(eq(moduleAttempts.id, attempt.id));
+      await db
+        .update(modules)
+        .set({ currentVersionId: null })
+        .where(inArray(modules.id, [scormModule.id, videoModule.id]));
+      await db
+        .delete(videoModuleVersions)
+        .where(eq(videoModuleVersions.moduleVersionId, videoVersion.id));
+      await db
+        .delete(moduleVersions)
+        .where(inArray(moduleVersions.id, [scormVersion.id, videoVersion.id]));
+      await db.delete(modules).where(inArray(modules.id, [scormModule.id, videoModule.id]));
+      await db.delete(courses).where(eq(courses.id, course.id));
+    }
+  });
+
+  it("ignores a video module whose Mux asset is not ready, so the course can still reach 100%", async () => {
+    // The exact shape Task 1's backfill migration left every pre-existing
+    // placeholder video row in: status "errored", no asset, no playback id.
+    // Counting it would pin this course below 100% forever, and it would
+    // render a "Start" button leading to a 404.
+    const [course] = await db
+      .insert(courses)
+      .values({
+        code: `${courseCode}-video-errored`,
+        title: "Course Progress Errored Video Test",
+        status: "published",
+      })
+      .returning();
+    const [scormModule] = await db
+      .insert(modules)
+      .values({ courseId: course.id, moduleType: "scorm", title: "Scorm Module" })
+      .returning();
+    const [videoModule] = await db
+      .insert(modules)
+      .values({ courseId: course.id, moduleType: "video", title: "Errored Video Module" })
+      .returning();
+    const [scormVersion] = await db
+      .insert(moduleVersions)
+      .values({ moduleId: scormModule.id, versionNumber: 1, status: "published" })
+      .returning();
+    const [videoVersion] = await db
+      .insert(moduleVersions)
+      .values({ moduleId: videoModule.id, versionNumber: 1, status: "published" })
+      .returning();
+    await db
+      .update(modules)
+      .set({ currentVersionId: scormVersion.id })
+      .where(eq(modules.id, scormModule.id));
+    await db
+      .update(modules)
+      .set({ currentVersionId: videoVersion.id })
+      .where(eq(modules.id, videoModule.id));
+    await db
+      .insert(videoModuleVersions)
+      .values({ moduleVersionId: videoVersion.id, status: "errored" });
     const [attempt] = await db
       .insert(moduleAttempts)
       .values({ moduleVersionId: scormVersion.id, userId, attemptNumber: 1 })
@@ -156,6 +248,83 @@ describe("getCourseProgressForLearner", () => {
         .update(modules)
         .set({ currentVersionId: null })
         .where(inArray(modules.id, [scormModule.id, videoModule.id]));
+      await db
+        .delete(videoModuleVersions)
+        .where(eq(videoModuleVersions.moduleVersionId, videoVersion.id));
+      await db
+        .delete(moduleVersions)
+        .where(inArray(moduleVersions.id, [scormVersion.id, videoVersion.id]));
+      await db.delete(modules).where(inArray(modules.id, [scormModule.id, videoModule.id]));
+      await db.delete(courses).where(eq(courses.id, course.id));
+    }
+  });
+
+  it("reaches completed when both a SCORM and a video module are done", async () => {
+    const [course] = await db
+      .insert(courses)
+      .values({
+        code: `${courseCode}-video-done`,
+        title: "Course Progress Video Done Test",
+        status: "published",
+      })
+      .returning();
+    const [scormModule] = await db
+      .insert(modules)
+      .values({ courseId: course.id, moduleType: "scorm", title: "Scorm Module" })
+      .returning();
+    const [videoModule] = await db
+      .insert(modules)
+      .values({ courseId: course.id, moduleType: "video", title: "Video Module" })
+      .returning();
+    const [scormVersion] = await db
+      .insert(moduleVersions)
+      .values({ moduleId: scormModule.id, versionNumber: 1, status: "published" })
+      .returning();
+    const [videoVersion] = await db
+      .insert(moduleVersions)
+      .values({ moduleId: videoModule.id, versionNumber: 1, status: "published" })
+      .returning();
+    await db
+      .update(modules)
+      .set({ currentVersionId: scormVersion.id })
+      .where(eq(modules.id, scormModule.id));
+    await db
+      .update(modules)
+      .set({ currentVersionId: videoVersion.id })
+      .where(eq(modules.id, videoModule.id));
+    await markVideoReady(videoVersion.id);
+    const [scormAttempt] = await db
+      .insert(moduleAttempts)
+      .values({ moduleVersionId: scormVersion.id, userId, attemptNumber: 1 })
+      .returning();
+    await db
+      .insert(scormAttemptState)
+      .values({ moduleAttemptId: scormAttempt.id, lessonStatus: "completed", rawCmi: {} });
+    const [videoAttempt] = await db
+      .insert(moduleAttempts)
+      .values({ moduleVersionId: videoVersion.id, userId, attemptNumber: 1 })
+      .returning();
+    await db
+      .insert(videoAttemptState)
+      .values({ moduleAttemptId: videoAttempt.id, status: "completed" });
+
+    try {
+      const result = await getCourseProgressForLearner(course.id, userId);
+
+      expect(result).toEqual({ status: "completed", progress: 100 });
+    } finally {
+      await db.delete(videoAttemptState).where(eq(videoAttemptState.moduleAttemptId, videoAttempt.id));
+      await db.delete(scormAttemptState).where(eq(scormAttemptState.moduleAttemptId, scormAttempt.id));
+      await db
+        .delete(moduleAttempts)
+        .where(inArray(moduleAttempts.id, [scormAttempt.id, videoAttempt.id]));
+      await db
+        .update(modules)
+        .set({ currentVersionId: null })
+        .where(inArray(modules.id, [scormModule.id, videoModule.id]));
+      await db
+        .delete(videoModuleVersions)
+        .where(eq(videoModuleVersions.moduleVersionId, videoVersion.id));
       await db
         .delete(moduleVersions)
         .where(inArray(moduleVersions.id, [scormVersion.id, videoVersion.id]));

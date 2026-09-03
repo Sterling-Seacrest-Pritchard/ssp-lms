@@ -8,10 +8,12 @@ import {
   moduleVersions,
   scormAttemptState,
   scormModuleVersions,
+  videoAttemptState,
   videoModuleVersions,
 } from "./schema";
 import { isUuid } from "@/lib/api/errors";
 import { deleteScormPackage } from "@/lib/scorm/extract-package";
+import { getMuxClient } from "@/lib/video/mux-client";
 
 export async function createDraftCourse(): Promise<{ id: string }> {
   const [course] = await db
@@ -58,26 +60,6 @@ export async function publishCourse(
   return { ok: true };
 }
 
-export async function addVideoPlaceholderModule(
-  courseId: string,
-  title: string,
-  durationMinutes: number | null
-): Promise<{ moduleVersionId: string }> {
-  return db.transaction(async (tx) => {
-    const [courseModule] = await tx
-      .insert(modules)
-      .values({ courseId, moduleType: "video", title })
-      .returning();
-    const [version] = await tx
-      .insert(moduleVersions)
-      .values({ moduleId: courseModule.id, versionNumber: 1, status: "published", publishedAt: new Date() })
-      .returning();
-    await tx.insert(videoModuleVersions).values({ moduleVersionId: version.id, durationMinutes });
-    await tx.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, courseModule.id));
-    return { moduleVersionId: version.id };
-  });
-}
-
 export async function removeModule(courseId: string, moduleId: string): Promise<void> {
   if (!isUuid(courseId) || !isUuid(moduleId)) return;
 
@@ -91,6 +73,7 @@ export async function removeModule(courseId: string, moduleId: string): Promise<
   // the source of truth for what a package belongs to, so the Storage objects
   // only become orphans once those rows are actually gone.
   const storagePrefixes: string[] = [];
+  const muxAssetIds: string[] = [];
 
   await db.transaction(async (tx) => {
     await tx.update(modules).set({ currentVersionId: null }).where(eq(modules.id, courseModule.id));
@@ -107,12 +90,23 @@ export async function removeModule(courseId: string, moduleId: string): Promise<
         .where(inArray(scormModuleVersions.moduleVersionId, versionIds));
       storagePrefixes.push(...scormVersions.map((v) => v.gcsPrefix));
 
+      const videoVersions = await tx
+        .select()
+        .from(videoModuleVersions)
+        .where(inArray(videoModuleVersions.moduleVersionId, versionIds));
+      muxAssetIds.push(...videoVersions.map((v) => v.muxAssetId).filter((id): id is string => id !== null));
+
       // Learner attempt rows FIRST: `module_attempts.module_version_id` is a
       // NOT NULL foreign key with `onDelete: no action`, so deleting a
       // module_versions row while any attempt still references it raises a FK
       // violation that aborts this whole transaction - i.e. removing a module
       // any learner has ever started would 500. Same FK order as the test
-      // cleanup helpers: scorm_attempt_state -> module_attempts.
+      // cleanup helpers: the per-type attempt-state tables
+      // (scorm_attempt_state, video_attempt_state - both also `onDelete: no
+      // action` against module_attempts) -> module_attempts. Missing either
+      // state table here 500s the removal, and for a video module that
+      // matters twice over: removal is the only way to free a slot against
+      // the Mux free-tier asset cap.
       const attempts = await tx
         .select({ id: moduleAttempts.id })
         .from(moduleAttempts)
@@ -122,6 +116,9 @@ export async function removeModule(courseId: string, moduleId: string): Promise<
         await tx
           .delete(scormAttemptState)
           .where(inArray(scormAttemptState.moduleAttemptId, attemptIds));
+        await tx
+          .delete(videoAttemptState)
+          .where(inArray(videoAttemptState.moduleAttemptId, attemptIds));
         await tx.delete(moduleAttempts).where(inArray(moduleAttempts.id, attemptIds));
       }
 
@@ -143,6 +140,22 @@ export async function removeModule(courseId: string, moduleId: string): Promise<
     } catch (error) {
       console.error(
         `removeModule: failed to delete SCORM package "${prefix}" from Storage; it is now orphaned`,
+        error
+      );
+    }
+  }
+
+  // Same "log and continue, never fail the operation" pattern as the SCORM
+  // Storage cleanup above: the DB rows are already gone, so a failed Mux
+  // delete leaves an orphaned asset rather than aborting an already-committed
+  // removal.
+  const mux = getMuxClient();
+  for (const assetId of muxAssetIds) {
+    try {
+      await mux.video.assets.delete(assetId);
+    } catch (error) {
+      console.error(
+        `removeModule: failed to delete Mux asset "${assetId}"; it is now orphaned and still counts against the free-tier limit`,
         error
       );
     }
