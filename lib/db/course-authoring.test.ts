@@ -8,7 +8,6 @@ import {
   publishCourse,
   removeModule,
   reorderModules,
-  addVideoPlaceholderModule,
 } from "./course-authoring";
 import { db } from "./client";
 import {
@@ -22,6 +21,27 @@ import {
 } from "./schema";
 import { uploadScormPackage } from "@/lib/scorm/extract-package";
 import { supabaseStorage } from "@/lib/storage/supabase";
+
+/**
+ * Test-only replacement for the removed `addVideoPlaceholderModule` (Task 2
+ * of the video-hosting-mux plan superseded it with the real Mux
+ * upload-creation route) - inserts the same module/version/video rows
+ * directly so the other exports in this file still have a video module to
+ * exercise against.
+ */
+async function createTestVideoModule(courseId: string, title: string): Promise<{ moduleVersionId: string }> {
+  const [courseModule] = await db
+    .insert(modules)
+    .values({ courseId, moduleType: "video", title })
+    .returning();
+  const [version] = await db
+    .insert(moduleVersions)
+    .values({ moduleId: courseModule.id, versionNumber: 1, status: "published", publishedAt: new Date() })
+    .returning();
+  await db.insert(videoModuleVersions).values({ moduleVersionId: version.id, status: "waiting" });
+  await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, courseModule.id));
+  return { moduleVersionId: version.id };
+}
 
 describe("createDraftCourse", () => {
   it("creates a draft course with a generated title and unique code", async () => {
@@ -80,7 +100,7 @@ describe("publishCourse", () => {
   it("publishes a course with at least one module", async () => {
     const { id } = await createDraftCourse();
     try {
-      await addVideoPlaceholderModule(id, "A Module", 5);
+      await createTestVideoModule(id, "A Module");
       const result = await publishCourse(id);
       expect(result).toEqual({ ok: true });
       const [course] = await db.select().from(courses).where(eq(courses.id, id));
@@ -99,40 +119,11 @@ describe("publishCourse", () => {
   });
 });
 
-describe("addVideoPlaceholderModule", () => {
-  it("creates a module, version, and video_module_versions row, and sets currentVersionId", async () => {
-    const { id: courseId } = await createDraftCourse();
-    try {
-      const { moduleVersionId } = await addVideoPlaceholderModule(courseId, "Intro Video", 12);
-
-      const [video] = await db
-        .select()
-        .from(videoModuleVersions)
-        .where(eq(videoModuleVersions.moduleVersionId, moduleVersionId));
-      expect(video.durationMinutes).toBe(12);
-
-      const [mod] = await db.select().from(modules).where(eq(modules.courseId, courseId));
-      expect(mod.moduleType).toBe("video");
-      expect(mod.currentVersionId).toBe(moduleVersionId);
-    } finally {
-      const mods = await db.select().from(modules).where(eq(modules.courseId, courseId));
-      const moduleIds = mods.map((m) => m.id);
-      await db.update(modules).set({ currentVersionId: null }).where(inArray(modules.id, moduleIds));
-      const versions = await db.select().from(moduleVersions).where(inArray(moduleVersions.moduleId, moduleIds));
-      const versionIds = versions.map((v) => v.id);
-      await db.delete(videoModuleVersions).where(inArray(videoModuleVersions.moduleVersionId, versionIds));
-      await db.delete(moduleVersions).where(inArray(moduleVersions.id, versionIds));
-      await db.delete(modules).where(inArray(modules.id, moduleIds));
-      await db.delete(courses).where(eq(courses.id, courseId));
-    }
-  });
-});
-
 describe("removeModule", () => {
   it("deletes a module and its version rows", async () => {
     const { id: courseId } = await createDraftCourse();
     try {
-      const { moduleVersionId } = await addVideoPlaceholderModule(courseId, "To Remove", 3);
+      const { moduleVersionId } = await createTestVideoModule(courseId, "To Remove");
       const [mod] = await db.select().from(modules).where(eq(modules.courseId, courseId));
 
       await removeModule(courseId, mod.id);
@@ -153,7 +144,7 @@ describe("removeModule", () => {
     const { id: courseId } = await createDraftCourse();
     const userId = `remove-module-test-${randomUUID()}@example.com`;
     try {
-      const { moduleVersionId } = await addVideoPlaceholderModule(courseId, "Started", 3);
+      const { moduleVersionId } = await createTestVideoModule(courseId, "Started");
       const [mod] = await db.select().from(modules).where(eq(modules.courseId, courseId));
       const [attempt] = await db
         .insert(moduleAttempts)
@@ -237,7 +228,7 @@ describe("removeModule", () => {
     const { id: courseId } = await createDraftCourse();
     const { id: otherCourseId } = await createDraftCourse();
     try {
-      await addVideoPlaceholderModule(courseId, "Belongs Here", 3);
+      await createTestVideoModule(courseId, "Belongs Here");
       const [mod] = await db.select().from(modules).where(eq(modules.courseId, courseId));
 
       await removeModule(otherCourseId, mod.id);
@@ -262,8 +253,8 @@ describe("reorderModules", () => {
   it("updates sortOrder to match the given order", async () => {
     const { id: courseId } = await createDraftCourse();
     try {
-      await addVideoPlaceholderModule(courseId, "First", 1);
-      await addVideoPlaceholderModule(courseId, "Second", 1);
+      await createTestVideoModule(courseId, "First");
+      await createTestVideoModule(courseId, "Second");
       const mods = await db
         .select()
         .from(modules)

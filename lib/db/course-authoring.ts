@@ -58,26 +58,6 @@ export async function publishCourse(
   return { ok: true };
 }
 
-export async function addVideoPlaceholderModule(
-  courseId: string,
-  title: string,
-  durationMinutes: number | null
-): Promise<{ moduleVersionId: string }> {
-  return db.transaction(async (tx) => {
-    const [courseModule] = await tx
-      .insert(modules)
-      .values({ courseId, moduleType: "video", title })
-      .returning();
-    const [version] = await tx
-      .insert(moduleVersions)
-      .values({ moduleId: courseModule.id, versionNumber: 1, status: "published", publishedAt: new Date() })
-      .returning();
-    await tx.insert(videoModuleVersions).values({ moduleVersionId: version.id, durationMinutes });
-    await tx.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, courseModule.id));
-    return { moduleVersionId: version.id };
-  });
-}
-
 export async function removeModule(courseId: string, moduleId: string): Promise<void> {
   if (!isUuid(courseId) || !isUuid(moduleId)) return;
 
