@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { courses, modules, moduleVersions, videoModuleVersions } from "@/lib/db/schema";
 import { isUuid } from "@/lib/api/errors";
@@ -39,6 +39,40 @@ export async function getVideoLaunchInfo(
   const row = await loadLaunchInfoRow(moduleVersionId);
   if (!row || row.courseStatus !== "published" || row.videoStatus !== "ready") return null;
   return { muxPlaybackId: row.muxPlaybackId, durationSeconds: row.durationSeconds };
+}
+
+/**
+ * Of the given module version ids, the subset whose Mux asset is actually
+ * playable - i.e. the ones that would satisfy `getVideoLaunchInfo`'s
+ * asset-side checks (`status === "ready"`, with a real playback id and
+ * duration). One query for the whole batch, so a course page doesn't fan out
+ * per module.
+ *
+ * The parent course's publish status is deliberately NOT checked here:
+ * callers use this to decide whether a video module *inside an already
+ * resolved course* is launchable/tracked, and they've already established
+ * that course's visibility. Learner surfaces that resolve a single module
+ * from a URL must still go through `getVideoLaunchInfo`, which does check it.
+ */
+export async function getReadyVideoModuleVersionIds(
+  moduleVersionIds: string[]
+): Promise<Set<string>> {
+  const ids = moduleVersionIds.filter(isUuid);
+  if (ids.length === 0) return new Set();
+
+  const rows = await db
+    .select({ moduleVersionId: videoModuleVersions.moduleVersionId })
+    .from(videoModuleVersions)
+    .where(
+      and(
+        inArray(videoModuleVersions.moduleVersionId, ids),
+        eq(videoModuleVersions.status, "ready"),
+        isNotNull(videoModuleVersions.muxPlaybackId),
+        isNotNull(videoModuleVersions.durationSeconds)
+      )
+    );
+
+  return new Set(rows.map((r) => r.moduleVersionId));
 }
 
 async function loadLaunchInfoRow(moduleVersionId: string): Promise<VideoLaunchInfoRow | null> {

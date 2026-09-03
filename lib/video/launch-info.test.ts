@@ -2,7 +2,11 @@ import { describe, it, expect, afterEach } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { courses, modules, moduleVersions, videoModuleVersions } from "@/lib/db/schema";
-import { getVideoLaunchInfo, getVideoLaunchInfoForAdmin } from "./launch-info";
+import {
+  getReadyVideoModuleVersionIds,
+  getVideoLaunchInfo,
+  getVideoLaunchInfoForAdmin,
+} from "./launch-info";
 
 describe("video launch-info", () => {
   let courseId: string | undefined;
@@ -64,5 +68,49 @@ describe("video launch-info", () => {
   it("returns null for a non-UUID id", async () => {
     const info = await getVideoLaunchInfo("not-a-uuid");
     expect(info).toBeNull();
+  });
+
+  describe("getReadyVideoModuleVersionIds", () => {
+    it("includes a ready video regardless of the parent course's publish status", async () => {
+      const id = await seed("draft", "ready");
+      expect(await getReadyVideoModuleVersionIds([id])).toEqual(new Set([id]));
+    });
+
+    it("excludes a video that is still processing", async () => {
+      const id = await seed("published", "preparing");
+      expect(await getReadyVideoModuleVersionIds([id])).toEqual(new Set());
+    });
+
+    it("excludes an errored video with no asset - the state Task 1's backfill left placeholders in", async () => {
+      const [course] = await db
+        .insert(courses)
+        .values({ code: `LAUNCH-ERR-${Date.now()}`, title: "x", status: "published" })
+        .returning();
+      courseId = course.id;
+      const [mod] = await db
+        .insert(modules)
+        .values({ courseId: course.id, moduleType: "video", title: "x" })
+        .returning();
+      moduleId = mod.id;
+      const [version] = await db
+        .insert(moduleVersions)
+        .values({ moduleId: mod.id, versionNumber: 1, status: "published" })
+        .returning();
+      versionId = version.id;
+      await db.insert(videoModuleVersions).values({ moduleVersionId: version.id, status: "errored" });
+
+      expect(await getReadyVideoModuleVersionIds([version.id])).toEqual(new Set());
+    });
+
+    it("excludes a module version with no video row at all", async () => {
+      expect(
+        await getReadyVideoModuleVersionIds(["00000000-0000-0000-0000-000000000000"])
+      ).toEqual(new Set());
+    });
+
+    it("drops non-UUID ids instead of handing them to Postgres, and short-circuits an empty list", async () => {
+      expect(await getReadyVideoModuleVersionIds(["not-a-uuid"])).toEqual(new Set());
+      expect(await getReadyVideoModuleVersionIds([])).toEqual(new Set());
+    });
   });
 });

@@ -9,7 +9,7 @@ import { courses } from "@/lib/mock-data/courses";
 import { getRealCourseDetail } from "@/lib/db/queries";
 import { getLatestLessonStatus } from "@/lib/scorm/completion-status";
 import { getLatestVideoStatus } from "@/lib/video/completion-status";
-import { isTrackedModuleType } from "@/lib/scorm/course-progress";
+import { getTrackedModuleVersionIds } from "@/lib/scorm/course-progress";
 import { auth } from "@/auth";
 
 const moduleIcon = {
@@ -31,14 +31,18 @@ export default async function CourseDetailPage(props: PageProps<"/courses/[id]">
     const session = await auth();
     const userId = session?.user?.email;
 
+    // A module is only launchable if it has a player AND something to play.
+    // For video that means the Mux asset is actually `ready` - one still
+    // uploading/processing, or `errored`, has no playable video, so it is
+    // shown as not-yet-available and kept out of the progress fraction:
+    // counting it would pin this course below 100% forever. Resolved for the
+    // whole course in one query, and it is the same rule
+    // `getCourseProgressForLearner` applies to the course list card.
+    const trackedIds = await getTrackedModuleVersionIds(realCourse.modules);
+
     const modulesWithStatus = await Promise.all(
       realCourse.modules.map(async (module) => {
-        // Only SCORM modules have a player and report completion. A video
-        // placeholder has neither, so it is shown as not-yet-launchable and
-        // kept out of the progress fraction - counting it would pin this
-        // course below 100% forever. Same rule as
-        // `getCourseProgressForLearner`, which drives the course list card.
-        const launchable = isTrackedModuleType(module.moduleType);
+        const launchable = trackedIds.has(module.moduleVersionId);
         // Video and SCORM report completion differently: video's only
         // finished status is "completed", while SCORM also treats "passed"
         // as finished. Mirrors the same per-type split already used by
