@@ -181,10 +181,37 @@ export function BuilderClient({ initialCourse }: { initialCourse: CourseForBuild
 
     setVideoStatus("preparing");
     const { moduleId } = createBody;
+    // Mux processing is usually done in well under a minute, but give it
+    // plenty of headroom before giving up: 100 attempts * 3s = 5 minutes.
+    const MAX_POLL_ATTEMPTS = 100;
+    // A handful of consecutive transient network failures shouldn't kill the
+    // whole poll loop, but a persistent failure should surface, not spin
+    // forever.
+    const MAX_CONSECUTIVE_FAILURES = 5;
+    let attempts = 0;
+    let consecutiveFailures = 0;
     const poll = async () => {
-      const statusResponse = await fetch(`/api/admin/courses/${course.id}/modules/${moduleId}/video-status`);
-      const statusBody = await statusResponse.json();
-      if (statusBody.status === "ready" || statusBody.status === "errored") {
+      attempts += 1;
+      let statusBody: { status?: string; error?: string } | undefined;
+      try {
+        const statusResponse = await fetch(`/api/admin/courses/${course.id}/modules/${moduleId}/video-status`);
+        statusBody = await statusResponse.json();
+        if (!statusResponse.ok) {
+          throw new Error(statusBody?.error ?? "Status check failed");
+        }
+      } catch {
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          setVideoError("Lost connection while checking upload status. Reload the page to check on it.");
+          setVideoUploading(false);
+          return;
+        }
+        setTimeout(poll, 3000);
+        return;
+      }
+      consecutiveFailures = 0;
+
+      if (statusBody?.status === "ready" || statusBody?.status === "errored") {
         setVideoStatus(statusBody.status);
         setVideoUploading(false);
         if (statusBody.status === "ready") {
@@ -195,7 +222,14 @@ export function BuilderClient({ initialCourse }: { initialCourse: CourseForBuild
         }
         return;
       }
-      setVideoStatus(statusBody.status);
+
+      if (attempts >= MAX_POLL_ATTEMPTS) {
+        setVideoError("Upload is taking longer than expected — check back later or reload.");
+        setVideoUploading(false);
+        return;
+      }
+
+      setVideoStatus(statusBody?.status ?? null);
       setTimeout(poll, 3000);
     };
     poll();
