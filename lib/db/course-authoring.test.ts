@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import AdmZip from "adm-zip";
 import { eq, inArray } from "drizzle-orm";
@@ -29,6 +29,23 @@ import { supabaseStorage } from "@/lib/storage/supabase";
  * directly so the other exports in this file still have a video module to
  * exercise against.
  */
+async function addVideoModuleForTest(courseId: string): Promise<{ moduleVersionId: string }> {
+  const [mod] = await db.insert(modules).values({ courseId, moduleType: "video", title: "Test Video" }).returning();
+  const [version] = await db
+    .insert(moduleVersions)
+    .values({ moduleId: mod.id, versionNumber: 1, status: "published", publishedAt: new Date() })
+    .returning();
+  await db.insert(videoModuleVersions).values({
+    moduleVersionId: version.id,
+    muxAssetId: "test-asset-id",
+    muxPlaybackId: "test-playback-id",
+    status: "ready",
+    durationSeconds: 60,
+  });
+  await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, mod.id));
+  return { moduleVersionId: version.id };
+}
+
 async function createTestVideoModule(courseId: string, title: string): Promise<{ moduleVersionId: string }> {
   const [courseModule] = await db
     .insert(modules)
@@ -222,6 +239,26 @@ describe("removeModule", () => {
   it("does nothing for a non-UUID id", async () => {
     await expect(removeModule("not-a-uuid", randomUUID())).resolves.toBeUndefined();
     await expect(removeModule(randomUUID(), "not-a-uuid")).resolves.toBeUndefined();
+  });
+
+  it("removes a video module and deletes its Mux asset", async () => {
+    const { id: courseId } = await createDraftCourse();
+    const { moduleVersionId } = await addVideoModuleForTest(courseId);
+    const [videoRow] = await db.select().from(videoModuleVersions).where(eq(videoModuleVersions.moduleVersionId, moduleVersionId));
+    const [mod] = await db.select().from(modules).where(eq(modules.currentVersionId, moduleVersionId));
+
+    const deleteSpy = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(await import("@/lib/video/mux-client"), "getMuxClient").mockReturnValue({
+      video: { assets: { delete: deleteSpy } },
+    } as unknown as ReturnType<typeof import("@/lib/video/mux-client").getMuxClient>);
+
+    await removeModule(courseId, mod.id);
+
+    expect(deleteSpy).toHaveBeenCalledWith(videoRow.muxAssetId);
+    const remaining = await db.select().from(videoModuleVersions).where(eq(videoModuleVersions.moduleVersionId, moduleVersionId));
+    expect(remaining).toHaveLength(0);
+
+    await db.delete(courses).where(eq(courses.id, courseId));
   });
 
   it("does nothing if the module belongs to a different course", async () => {

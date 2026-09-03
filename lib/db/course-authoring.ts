@@ -12,6 +12,7 @@ import {
 } from "./schema";
 import { isUuid } from "@/lib/api/errors";
 import { deleteScormPackage } from "@/lib/scorm/extract-package";
+import { getMuxClient } from "@/lib/video/mux-client";
 
 export async function createDraftCourse(): Promise<{ id: string }> {
   const [course] = await db
@@ -71,6 +72,7 @@ export async function removeModule(courseId: string, moduleId: string): Promise<
   // the source of truth for what a package belongs to, so the Storage objects
   // only become orphans once those rows are actually gone.
   const storagePrefixes: string[] = [];
+  const muxAssetIds: string[] = [];
 
   await db.transaction(async (tx) => {
     await tx.update(modules).set({ currentVersionId: null }).where(eq(modules.id, courseModule.id));
@@ -86,6 +88,12 @@ export async function removeModule(courseId: string, moduleId: string): Promise<
         .from(scormModuleVersions)
         .where(inArray(scormModuleVersions.moduleVersionId, versionIds));
       storagePrefixes.push(...scormVersions.map((v) => v.gcsPrefix));
+
+      const videoVersions = await tx
+        .select()
+        .from(videoModuleVersions)
+        .where(inArray(videoModuleVersions.moduleVersionId, versionIds));
+      muxAssetIds.push(...videoVersions.map((v) => v.muxAssetId).filter((id): id is string => id !== null));
 
       // Learner attempt rows FIRST: `module_attempts.module_version_id` is a
       // NOT NULL foreign key with `onDelete: no action`, so deleting a
@@ -123,6 +131,22 @@ export async function removeModule(courseId: string, moduleId: string): Promise<
     } catch (error) {
       console.error(
         `removeModule: failed to delete SCORM package "${prefix}" from Storage; it is now orphaned`,
+        error
+      );
+    }
+  }
+
+  // Same "log and continue, never fail the operation" pattern as the SCORM
+  // Storage cleanup above: the DB rows are already gone, so a failed Mux
+  // delete leaves an orphaned asset rather than aborting an already-committed
+  // removal.
+  const mux = getMuxClient();
+  for (const assetId of muxAssetIds) {
+    try {
+      await mux.video.assets.delete(assetId);
+    } catch (error) {
+      console.error(
+        `removeModule: failed to delete Mux asset "${assetId}"; it is now orphaned and still counts against the free-tier limit`,
         error
       );
     }
