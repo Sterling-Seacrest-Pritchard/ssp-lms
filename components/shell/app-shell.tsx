@@ -119,18 +119,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <div className="flex h-full w-64 flex-col">
         <div className="flex items-center px-5 py-5">
-          <Image
-            src={
-              mounted && resolvedTheme === "dark"
-                ? "/logo-horizontal-white.png"
-                : "/logo-horizontal-blue.png"
-            }
-            alt="Sterling Seacrest Pritchard"
-            width={200}
-            height={26}
-            priority
-            className="h-auto w-full"
-          />
+          <Link href={homeFor(role)} className="w-full">
+            <Image
+              src={
+                mounted && resolvedTheme === "dark"
+                  ? "/logo-horizontal-white.png"
+                  : "/logo-horizontal-blue.png"
+              }
+              alt="Sterling Seacrest Pritchard"
+              width={200}
+              height={26}
+              priority
+              className="h-auto w-full"
+            />
+          </Link>
         </div>
         <Separator />
         <nav className="flex flex-1 flex-col gap-1 px-3 py-4">
@@ -221,9 +223,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span>
                 Viewing as <span className="font-medium text-foreground">{roleLabel}</span>
               </span>
-            )}
-            {isAuthenticated && (
-              <span className="ml-2 text-xs">(signed in as {displayName})</span>
             )}
           </div>
           <div className="flex items-center gap-3">

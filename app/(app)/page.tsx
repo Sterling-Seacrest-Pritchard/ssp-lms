@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { courses, currentUser } from "@/lib/mock-data/courses";
 import { updates, type UpdateType } from "@/lib/mock-data/updates";
+import { auth } from "@/auth";
 
 const updateIcon: Record<UpdateType, typeof Bell> = {
   "due-soon": CalendarClock,
@@ -26,7 +27,10 @@ const quickLinks = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const session = await auth();
+  const displayName = session?.user?.name ?? currentUser.name;
+
   const activeCourses = courses
     .filter((c) => c.status !== "completed")
     .sort((a, b) => b.progress - a.progress)
@@ -40,7 +44,7 @@ export default function HomePage() {
     <div className="mx-auto flex max-w-6xl flex-col gap-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
-          Welcome back, {currentUser.name.split(" ")[0]}
+          Welcome back, {displayName.split(" ")[0]}
         </h1>
         <p className="text-sm text-muted-foreground">
           {currentUser.department} &middot; {activeCourses.length} courses in progress

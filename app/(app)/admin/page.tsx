@@ -3,6 +3,7 @@ import { BookOpen, Video, BarChart3, Users, ArrowRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { orgStats } from "@/lib/mock-data/reporting";
 import { currentUser } from "@/lib/mock-data/courses";
+import { auth } from "@/auth";
 
 const statCards = [
   { label: "Total Employees", value: orgStats.totalEmployees },
@@ -18,12 +19,15 @@ const quickLinks = [
   { href: "/admin/org", label: "Org Admin", description: "Department and role management", icon: Users },
 ];
 
-export default function AdminHomePage() {
+export default async function AdminHomePage() {
+  const session = await auth();
+  const displayName = session?.user?.name ?? currentUser.name;
+
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
-          Welcome back, {currentUser.name.split(" ")[0]}
+          Welcome back, {displayName.split(" ")[0]}
         </h1>
         <p className="text-sm text-muted-foreground">Admin overview — {currentUser.department}</p>
       </div>
