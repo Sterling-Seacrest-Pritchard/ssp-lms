@@ -130,6 +130,8 @@ export function MuxVideoPlayer({
         playbackId={playbackId}
         tokens={{ playback: playbackToken }}
         startTime={initialFurthestWatchedSeconds}
+        style={{ width: "100%", aspectRatio: "16 / 9" }}
+        className="mx-auto max-w-4xl overflow-hidden rounded-xl"
         onLoadedMetadata={() => {
           if (playerRef.current) playerRef.current.currentTime = positionRef.current;
         }}
