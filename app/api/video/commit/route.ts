@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { videoAttemptState } from "@/lib/db/schema";
-import { badRequest, isUuid, serverError } from "@/lib/api/errors";
+import { moduleAttempts, videoAttemptState } from "@/lib/db/schema";
+import { badRequest, isUuid, notFound, serverError } from "@/lib/api/errors";
+import { auth } from "@/auth";
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+    const sessionUserId = session?.user?.email;
+    if (!sessionUserId) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+
     let body: unknown;
     try {
       body = await request.json();
@@ -27,6 +34,19 @@ export async function POST(request: NextRequest) {
     }
     if (status !== "in_progress" && status !== "completed") {
       return badRequest("status must be 'in_progress' or 'completed'");
+    }
+
+    // The attempt must exist AND belong to the caller. Both misses collapse to
+    // the same 404: a 403 would tell an attacker holding a guessed UUID that
+    // the attempt is real and someone else's. This also turns a
+    // bogus-but-UUID-shaped attemptId into a clean 404 instead of the 500 the
+    // video_attempt_state -> module_attempts FK used to raise on insert.
+    const [attempt] = await db
+      .select({ userId: moduleAttempts.userId })
+      .from(moduleAttempts)
+      .where(eq(moduleAttempts.id, attemptId));
+    if (!attempt || attempt.userId !== sessionUserId) {
+      return notFound("Attempt not found");
     }
 
     const existing = await db
