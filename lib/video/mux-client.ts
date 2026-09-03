@@ -12,6 +12,13 @@ export function getMuxClient(): Mux {
     client = new Mux({
       tokenId: process.env.MUX_TOKEN_ID,
       tokenSecret: process.env.MUX_TOKEN_SECRET,
+      // The SDK's own env-var auto-read only recognizes `MUX_SIGNING_KEY` /
+      // `MUX_PRIVATE_KEY` (see node_modules/@mux/mux-node/src/client.ts) -
+      // this app's `.env.local` uses the more explicit
+      // `MUX_SIGNING_KEY_ID` / `MUX_SIGNING_KEY_PRIVATE_KEY` names, so they
+      // must be passed through here rather than left for the SDK to guess.
+      jwtSigningKey: process.env.MUX_SIGNING_KEY_ID,
+      jwtPrivateKey: process.env.MUX_SIGNING_KEY_PRIVATE_KEY,
     });
   }
   return client;
