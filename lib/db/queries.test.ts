@@ -153,8 +153,56 @@ describe("getRealCourseDetail", () => {
     expect(result?.modules[0]).toEqual({
       id: courseModule.id,
       title: "Detail Test Module",
+      moduleType: "scorm",
       moduleVersionId: version.id,
     });
+  });
+
+  it("carries each module's moduleType so the learner page can tell a video placeholder from a launchable SCORM module", async () => {
+    const [course] = await db
+      .insert(courses)
+      .values({ code: `${courseCode}-types`, title: "Module Types Test", status: "published" })
+      .returning();
+    const [scormModule] = await db
+      .insert(modules)
+      .values({ courseId: course.id, moduleType: "scorm", title: "Scorm", sortOrder: 0 })
+      .returning();
+    const [videoModule] = await db
+      .insert(modules)
+      .values({ courseId: course.id, moduleType: "video", title: "Video", sortOrder: 1 })
+      .returning();
+    const [scormVersion] = await db
+      .insert(moduleVersions)
+      .values({ moduleId: scormModule.id, versionNumber: 1, status: "published" })
+      .returning();
+    const [videoVersion] = await db
+      .insert(moduleVersions)
+      .values({ moduleId: videoModule.id, versionNumber: 1, status: "published" })
+      .returning();
+    await db
+      .update(modules)
+      .set({ currentVersionId: scormVersion.id })
+      .where(eq(modules.id, scormModule.id));
+    await db
+      .update(modules)
+      .set({ currentVersionId: videoVersion.id })
+      .where(eq(modules.id, videoModule.id));
+
+    try {
+      const result = await getRealCourseDetail(course.id);
+
+      expect(result?.modules.map((m) => m.moduleType)).toEqual(["scorm", "video"]);
+    } finally {
+      await db
+        .update(modules)
+        .set({ currentVersionId: null })
+        .where(inArray(modules.id, [scormModule.id, videoModule.id]));
+      await db
+        .delete(moduleVersions)
+        .where(inArray(moduleVersions.id, [scormVersion.id, videoVersion.id]));
+      await db.delete(modules).where(inArray(modules.id, [scormModule.id, videoModule.id]));
+      await db.delete(courses).where(eq(courses.id, course.id));
+    }
   });
 
   it("excludes modules with no currentVersionId (never had a version published)", async () => {

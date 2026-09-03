@@ -14,6 +14,7 @@ import {
 import {
   DndContext,
   closestCenter,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
@@ -24,6 +25,7 @@ import {
   verticalListSortingStrategy,
   useSortable,
   arrayMove,
+  sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -104,7 +106,14 @@ export function BuilderClient({ initialCourse }: { initialCourse: CourseForBuild
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const sensors = useSensors(useSensor(PointerSensor));
+  // KeyboardSensor alongside the pointer one so the drag handle - already a
+  // focusable <button> carrying the dnd-kit activator props - can reorder
+  // modules with Space/Enter + arrow keys. Without it, reordering was
+  // mouse/touch-only.
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   async function patchDetails(fields: Record<string, unknown>) {
     await fetch(`/api/admin/courses/${course.id}`, {

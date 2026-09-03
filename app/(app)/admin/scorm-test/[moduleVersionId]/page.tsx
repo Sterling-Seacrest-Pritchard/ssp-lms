@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { getScormLaunchInfo } from "@/lib/scorm/launch-info";
+import { getScormLaunchInfoForAdmin } from "@/lib/scorm/launch-info";
 import { ScormLaunch } from "./scorm-launch";
 
 export default async function ScormTestPage(
@@ -9,7 +9,10 @@ export default async function ScormTestPage(
 ) {
   const { moduleVersionId } = await props.params;
 
-  const info = await getScormLaunchInfo(moduleVersionId);
+  // Deliberately the un-gated lookup: this harness exists to test a module
+  // BEFORE its course is published, and the whole `/admin` tree is admin-only
+  // (see `lib/auth/admin-gate.ts`).
+  const info = await getScormLaunchInfoForAdmin(moduleVersionId);
   if (!info) {
     notFound();
   }

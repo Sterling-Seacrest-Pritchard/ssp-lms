@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
-import { db } from "@/lib/db/client";
-import { scormModuleVersions } from "@/lib/db/schema";
+import { auth } from "@/auth";
+import { isAdminRole } from "@/lib/roles";
 import { supabaseStorage } from "@/lib/storage/supabase";
 import { mimeTypeForPath } from "@/lib/scorm/mime-types";
+import { getScormLaunchInfo, getScormLaunchInfoForAdmin } from "@/lib/scorm/launch-info";
 import { isUuid, notFound, serverError } from "@/lib/api/errors";
 
 /**
@@ -28,12 +28,17 @@ export async function GET(
       return notFound("Module version not found");
     }
 
-    const [row] = await db
-      .select()
-      .from(scormModuleVersions)
-      .where(eq(scormModuleVersions.moduleVersionId, moduleVersionId));
+    // Gate the package bytes on the parent course being published, exactly as
+    // the learner detail page and the launch lookup do: this route is a
+    // learner-reachable way to read a draft course's content otherwise.
+    // Admins keep the un-gated lookup so the `/admin/scorm-test` harness can
+    // still play a module before its course is published.
+    const session = await auth();
+    const info = isAdminRole(session?.user?.roles)
+      ? await getScormLaunchInfoForAdmin(moduleVersionId)
+      : await getScormLaunchInfo(moduleVersionId);
 
-    if (!row) {
+    if (!info) {
       return notFound("Module version not found");
     }
 
@@ -51,7 +56,7 @@ export async function GET(
 
     const { data, error } = await supabaseStorage
       .from("scorm-packages")
-      .download(`${row.gcsPrefix}/${joinedPath}`);
+      .download(`${info.gcsPrefix}/${joinedPath}`);
 
     if (error || !data) {
       return notFound("File not found");

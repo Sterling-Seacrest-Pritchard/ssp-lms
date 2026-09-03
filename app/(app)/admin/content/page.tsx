@@ -17,6 +17,7 @@ export default function ContentAuthoringPage() {
     (RealCourseSummary & { status: string })[]
   >([]);
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/admin/courses/list")
@@ -27,9 +28,25 @@ export default function ContentAuthoringPage() {
 
   async function handleNewCourse() {
     setCreating(true);
-    const response = await fetch("/api/admin/courses", { method: "POST" });
-    const body = await response.json();
-    router.push(`/admin/content/builder/${body.courseId}`);
+    setCreateError(null);
+    // Every failure path has to clear `creating`, or the button stays stuck
+    // spinning with no way to retry: a non-2xx response, a body that isn't the
+    // JSON we expect, and a network error that rejects the fetch outright.
+    try {
+      const response = await fetch("/api/admin/courses", { method: "POST" });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.courseId) {
+        setCreateError(body?.error ?? "Could not create a course");
+        setCreating(false);
+        return;
+      }
+      // Left `creating` on deliberately: the navigation away is the success
+      // state, and re-enabling the button first invites a double-create.
+      router.push(`/admin/content/builder/${body.courseId}`);
+    } catch {
+      setCreateError("Could not create a course");
+      setCreating(false);
+    }
   }
 
   return (
@@ -41,10 +58,13 @@ export default function ContentAuthoringPage() {
             Build a course from one or more modules — SCORM packages and video placeholders.
           </p>
         </div>
-        <Button onClick={handleNewCourse} disabled={creating}>
-          <Plus className="h-4 w-4" />
-          New Course
-        </Button>
+        <div className="flex flex-col items-end gap-1.5">
+          <Button onClick={handleNewCourse} disabled={creating}>
+            <Plus className="h-4 w-4" />
+            {creating ? "Creating…" : "New Course"}
+          </Button>
+          {createError && <p className="text-sm text-destructive">{createError}</p>}
+        </div>
       </div>
 
       <Card>

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { courses } from "@/lib/mock-data/courses";
 import { getRealCourseDetail } from "@/lib/db/queries";
 import { getLatestLessonStatus } from "@/lib/scorm/completion-status";
+import { isTrackedModuleType } from "@/lib/scorm/course-progress";
 import { auth } from "@/auth";
 
 const moduleIcon = {
@@ -31,17 +32,27 @@ export default async function CourseDetailPage(props: PageProps<"/courses/[id]">
 
     const modulesWithStatus = await Promise.all(
       realCourse.modules.map(async (module) => {
-        const lessonStatus = userId
-          ? await getLatestLessonStatus(module.moduleVersionId, userId)
-          : null;
-        return { ...module, done: lessonStatus === "completed" || lessonStatus === "passed" };
+        // Only SCORM modules have a player and report completion. A video
+        // placeholder has neither, so it is shown as not-yet-launchable and
+        // kept out of the progress fraction - counting it would pin this
+        // course below 100% forever. Same rule as
+        // `getCourseProgressForLearner`, which drives the course list card.
+        const launchable = isTrackedModuleType(module.moduleType);
+        const lessonStatus =
+          userId && launchable ? await getLatestLessonStatus(module.moduleVersionId, userId) : null;
+        return {
+          ...module,
+          launchable,
+          done: lessonStatus === "completed" || lessonStatus === "passed",
+        };
       })
     );
-    const completedCount = modulesWithStatus.filter((m) => m.done).length;
+    const trackedModules = modulesWithStatus.filter((m) => m.launchable);
+    const completedCount = trackedModules.filter((m) => m.done).length;
     const progress =
-      modulesWithStatus.length === 0
+      trackedModules.length === 0
         ? 0
-        : Math.round((completedCount / modulesWithStatus.length) * 100);
+        : Math.round((completedCount / trackedModules.length) * 100);
 
     return (
       <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -86,14 +97,28 @@ export default async function CourseDetailPage(props: PageProps<"/courses/[id]">
                   ) : (
                     <Circle className="h-5 w-5 shrink-0 text-muted-foreground" />
                   )}
+                  {!module.launchable && (
+                    <PlayCircle className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  )}
                   <div className="flex-1">
                     <p className="text-sm font-medium">{module.title}</p>
+                    {!module.launchable && (
+                      <p className="text-xs text-muted-foreground">
+                        Video module &middot; not available yet
+                      </p>
+                    )}
                   </div>
-                  <Link href={`/courses/${realCourse.id}/scorm/${module.moduleVersionId}`}>
-                    <Button variant={module.done ? "outline" : "default"} size="sm">
-                      {module.done ? "Review" : "Start"}
+                  {module.launchable ? (
+                    <Link href={`/courses/${realCourse.id}/scorm/${module.moduleVersionId}`}>
+                      <Button variant={module.done ? "outline" : "default"} size="sm">
+                        {module.done ? "Review" : "Start"}
+                      </Button>
+                    </Link>
+                  ) : (
+                    <Button variant="outline" size="sm" disabled>
+                      Coming soon
                     </Button>
-                  </Link>
+                  )}
                 </div>
               ))
             )}

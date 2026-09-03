@@ -1,7 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "./client";
-import { courses, modules, moduleVersions, scormModuleVersions, videoModuleVersions } from "./schema";
+import {
+  courses,
+  moduleAttempts,
+  modules,
+  moduleVersions,
+  scormAttemptState,
+  scormModuleVersions,
+  videoModuleVersions,
+} from "./schema";
+import { isUuid } from "@/lib/api/errors";
+import { deleteScormPackage } from "@/lib/scorm/extract-package";
 
 export async function createDraftCourse(): Promise<{ id: string }> {
   const [course] = await db
@@ -69,11 +79,18 @@ export async function addVideoPlaceholderModule(
 }
 
 export async function removeModule(courseId: string, moduleId: string): Promise<void> {
+  if (!isUuid(courseId) || !isUuid(moduleId)) return;
+
   const [courseModule] = await db
     .select()
     .from(modules)
     .where(and(eq(modules.id, moduleId), eq(modules.courseId, courseId)));
   if (!courseModule) return;
+
+  // Collected inside the transaction, used after it commits: the DB rows are
+  // the source of truth for what a package belongs to, so the Storage objects
+  // only become orphans once those rows are actually gone.
+  const storagePrefixes: string[] = [];
 
   await db.transaction(async (tx) => {
     await tx.update(modules).set({ currentVersionId: null }).where(eq(modules.id, courseModule.id));
@@ -84,6 +101,30 @@ export async function removeModule(courseId: string, moduleId: string): Promise<
       .where(eq(moduleVersions.moduleId, courseModule.id));
     const versionIds = versions.map((v) => v.id);
     if (versionIds.length) {
+      const scormVersions = await tx
+        .select()
+        .from(scormModuleVersions)
+        .where(inArray(scormModuleVersions.moduleVersionId, versionIds));
+      storagePrefixes.push(...scormVersions.map((v) => v.gcsPrefix));
+
+      // Learner attempt rows FIRST: `module_attempts.module_version_id` is a
+      // NOT NULL foreign key with `onDelete: no action`, so deleting a
+      // module_versions row while any attempt still references it raises a FK
+      // violation that aborts this whole transaction - i.e. removing a module
+      // any learner has ever started would 500. Same FK order as the test
+      // cleanup helpers: scorm_attempt_state -> module_attempts.
+      const attempts = await tx
+        .select({ id: moduleAttempts.id })
+        .from(moduleAttempts)
+        .where(inArray(moduleAttempts.moduleVersionId, versionIds));
+      const attemptIds = attempts.map((a) => a.id);
+      if (attemptIds.length) {
+        await tx
+          .delete(scormAttemptState)
+          .where(inArray(scormAttemptState.moduleAttemptId, attemptIds));
+        await tx.delete(moduleAttempts).where(inArray(moduleAttempts.id, attemptIds));
+      }
+
       await tx.delete(scormModuleVersions).where(inArray(scormModuleVersions.moduleVersionId, versionIds));
       await tx.delete(videoModuleVersions).where(inArray(videoModuleVersions.moduleVersionId, versionIds));
       await tx.delete(moduleVersions).where(inArray(moduleVersions.id, versionIds));
@@ -91,6 +132,21 @@ export async function removeModule(courseId: string, moduleId: string): Promise<
 
     await tx.delete(modules).where(eq(modules.id, courseModule.id));
   });
+
+  // A video placeholder has no uploaded package, so `storagePrefixes` is empty
+  // for one and no Storage call is made. A failed delete leaves an orphaned
+  // package but must NOT fail the removal: the DB is the source of truth and
+  // the module is already gone from it, so log and carry on.
+  for (const prefix of storagePrefixes) {
+    try {
+      await deleteScormPackage(prefix);
+    } catch (error) {
+      console.error(
+        `removeModule: failed to delete SCORM package "${prefix}" from Storage; it is now orphaned`,
+        error
+      );
+    }
+  }
 }
 
 export async function reorderModules(courseId: string, orderedModuleIds: string[]): Promise<void> {

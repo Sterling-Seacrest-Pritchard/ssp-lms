@@ -95,3 +95,48 @@ export async function uploadScormPackage(
 
   return { prefix };
 }
+
+/**
+ * List every object stored under `prefix`, recursively.
+ *
+ * `list()` is NOT recursive: for a package with subdirectories it returns a
+ * synthetic "folder" row per immediate subdirectory (identifiable by a null
+ * `id` - real objects always carry one) rather than the files inside it. A
+ * flat listing would therefore leave most of a real SCORM package behind.
+ */
+async function listPackageObjects(prefix: string): Promise<string[]> {
+  const { data, error } = await supabaseStorage.from("scorm-packages").list(prefix);
+  if (error) {
+    throw new Error(`Failed to list ${prefix}: ${error.message}`);
+  }
+
+  const paths: string[] = [];
+  for (const entry of data ?? []) {
+    const path = `${prefix}/${entry.name}`;
+    if (entry.id === null) {
+      paths.push(...(await listPackageObjects(path)));
+    } else {
+      paths.push(path);
+    }
+  }
+  return paths;
+}
+
+/**
+ * Delete every uploaded file of a SCORM package from the `scorm-packages`
+ * bucket.
+ *
+ * Call this when the DB rows referencing a package are gone (or are about to
+ * be), so a removed module doesn't leave its package orphaned in Storage with
+ * nothing pointing at it - the same "never orphan a package" principle the
+ * upload path applies by validating a manifest before uploading anything.
+ */
+export async function deleteScormPackage(prefix: string): Promise<void> {
+  const paths = await listPackageObjects(prefix);
+  if (paths.length === 0) return;
+
+  const { error } = await supabaseStorage.from("scorm-packages").remove(paths);
+  if (error) {
+    throw new Error(`Failed to delete ${prefix}: ${error.message}`);
+  }
+}

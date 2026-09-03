@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { isAdminRole } from "@/lib/roles";
+import { requiresAdminRole, adminForbiddenResponse } from "@/lib/auth/admin-gate";
 
 export default auth((req) => {
   if (!req.auth) {
@@ -9,8 +10,8 @@ export default auth((req) => {
     return NextResponse.redirect(signInUrl);
   }
 
-  if (req.nextUrl.pathname.startsWith("/admin") && !isAdminRole(req.auth.user?.roles)) {
-    return NextResponse.redirect(new URL("/", req.url));
+  if (requiresAdminRole(req.nextUrl.pathname) && !isAdminRole(req.auth.user?.roles)) {
+    return adminForbiddenResponse(req.nextUrl.pathname, req.url);
   }
 });
 

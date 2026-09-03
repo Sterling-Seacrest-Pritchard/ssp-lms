@@ -85,6 +85,12 @@ export interface RealCourseDetail {
   modules: {
     id: string;
     title: string;
+    /**
+     * "scorm" | "video". The learner detail page needs this to decide whether a
+     * module is launchable: only SCORM modules have a player, so linking a
+     * video placeholder to `/courses/{id}/scorm/{moduleVersionId}` 404s.
+     */
+    moduleType: string;
     moduleVersionId: string;
   }[];
 }
@@ -98,7 +104,11 @@ export async function getRealCourseDetail(courseId: string): Promise<RealCourseD
     .where(eq(courses.id, courseId));
   if (!course || course.status !== "published") return null;
 
-  const courseModules = await db.select().from(modules).where(eq(modules.courseId, course.id));
+  const courseModules = await db
+    .select()
+    .from(modules)
+    .where(eq(modules.courseId, course.id))
+    .orderBy(modules.sortOrder);
 
   return {
     id: course.id,
@@ -109,7 +119,14 @@ export async function getRealCourseDetail(courseId: string): Promise<RealCourseD
     dueDate: course.dueDate ? course.dueDate.toISOString() : null,
     modules: courseModules.flatMap((m) =>
       m.currentVersionId
-        ? [{ id: m.id, title: m.title, moduleVersionId: m.currentVersionId }]
+        ? [
+            {
+              id: m.id,
+              title: m.title,
+              moduleType: m.moduleType,
+              moduleVersionId: m.currentVersionId,
+            },
+          ]
         : []
     ),
   };

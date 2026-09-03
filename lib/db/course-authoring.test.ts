@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { randomUUID } from "node:crypto";
+import AdmZip from "adm-zip";
 import { eq, inArray } from "drizzle-orm";
 import {
   createDraftCourse,
@@ -9,7 +11,17 @@ import {
   addVideoPlaceholderModule,
 } from "./course-authoring";
 import { db } from "./client";
-import { courses, modules, moduleVersions, videoModuleVersions } from "./schema";
+import {
+  courses,
+  moduleAttempts,
+  modules,
+  moduleVersions,
+  scormAttemptState,
+  scormModuleVersions,
+  videoModuleVersions,
+} from "./schema";
+import { uploadScormPackage } from "@/lib/scorm/extract-package";
+import { supabaseStorage } from "@/lib/storage/supabase";
 
 describe("createDraftCourse", () => {
   it("creates a draft course with a generated title and unique code", async () => {
@@ -135,6 +147,90 @@ describe("removeModule", () => {
     } finally {
       await db.delete(courses).where(eq(courses.id, courseId));
     }
+  });
+
+  it("removes a module a learner has already started, deleting its attempt rows", async () => {
+    const { id: courseId } = await createDraftCourse();
+    const userId = `remove-module-test-${randomUUID()}@example.com`;
+    try {
+      const { moduleVersionId } = await addVideoPlaceholderModule(courseId, "Started", 3);
+      const [mod] = await db.select().from(modules).where(eq(modules.courseId, courseId));
+      const [attempt] = await db
+        .insert(moduleAttempts)
+        .values({ moduleVersionId, userId, attemptNumber: 1 })
+        .returning();
+      await db
+        .insert(scormAttemptState)
+        .values({ moduleAttemptId: attempt.id, lessonStatus: "incomplete", rawCmi: {} });
+
+      // module_attempts.module_version_id is a NOT NULL FK with no cascade, so
+      // before the FK cleanup this threw and aborted the transaction.
+      await removeModule(courseId, mod.id);
+
+      expect(await db.select().from(modules).where(eq(modules.courseId, courseId))).toHaveLength(0);
+      expect(
+        await db.select().from(moduleAttempts).where(eq(moduleAttempts.id, attempt.id))
+      ).toHaveLength(0);
+      expect(
+        await db
+          .select()
+          .from(scormAttemptState)
+          .where(eq(scormAttemptState.moduleAttemptId, attempt.id))
+      ).toHaveLength(0);
+    } finally {
+      await db.delete(courses).where(eq(courses.id, courseId));
+    }
+  });
+
+  it("deletes the SCORM package from Storage instead of orphaning it", async () => {
+    const { id: courseId } = await createDraftCourse();
+    const prefix = `remove-module-test/${randomUUID()}`;
+    try {
+      const zip = new AdmZip();
+      zip.addFile("imsmanifest.xml", Buffer.from("<manifest/>"));
+      zip.addFile("index.html", Buffer.from("<html></html>"));
+      // A nested file, to prove the delete walks subdirectories: Storage's
+      // list() is not recursive.
+      zip.addFile("assets/app.js", Buffer.from("console.log(1);"));
+      await uploadScormPackage(zip.toBuffer(), prefix);
+
+      const [mod] = await db
+        .insert(modules)
+        .values({ courseId, moduleType: "scorm", title: "Scorm To Remove" })
+        .returning();
+      const [version] = await db
+        .insert(moduleVersions)
+        .values({ moduleId: mod.id, versionNumber: 1, status: "published" })
+        .returning();
+      await db.insert(scormModuleVersions).values({
+        moduleVersionId: version.id,
+        gcsPrefix: prefix,
+        manifestIdentifier: "x",
+        scormVersion: "1.2",
+        launchUrl: "index.html",
+        rawManifestXml: "<manifest/>",
+      });
+      await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, mod.id));
+
+      await removeModule(courseId, mod.id);
+
+      const { data: rootEntries } = await supabaseStorage.from("scorm-packages").list(prefix);
+      expect(rootEntries ?? []).toHaveLength(0);
+      const { data: assetEntries } = await supabaseStorage
+        .from("scorm-packages")
+        .list(`${prefix}/assets`);
+      expect(assetEntries ?? []).toHaveLength(0);
+    } finally {
+      const { data } = await supabaseStorage.from("scorm-packages").list(prefix);
+      const paths = (data ?? []).map((f) => `${prefix}/${f.name}`);
+      if (paths.length) await supabaseStorage.from("scorm-packages").remove(paths);
+      await db.delete(courses).where(eq(courses.id, courseId));
+    }
+  });
+
+  it("does nothing for a non-UUID id", async () => {
+    await expect(removeModule("not-a-uuid", randomUUID())).resolves.toBeUndefined();
+    await expect(removeModule(randomUUID(), "not-a-uuid")).resolves.toBeUndefined();
   });
 
   it("does nothing if the module belongs to a different course", async () => {

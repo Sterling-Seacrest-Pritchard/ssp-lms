@@ -33,7 +33,10 @@ describe("GET /api/scorm/launch-info/[moduleVersionId]", () => {
   });
 
   it("returns the launch URL and storage prefix for a module version", async () => {
-    const [course] = await db.insert(courses).values({ code: courseCode, title: "t" }).returning();
+    const [course] = await db
+      .insert(courses)
+      .values({ code: courseCode, title: "t", status: "published" })
+      .returning();
     const [courseModule] = await db
       .insert(modules)
       .values({ courseId: course.id, moduleType: "scorm", title: "t" })
@@ -69,5 +72,43 @@ describe("GET /api/scorm/launch-info/[moduleVersionId]", () => {
       { params: Promise.resolve({ moduleVersionId: randomUUID() }) }
     );
     expect(response.status).toBe(404);
+  });
+
+  it("returns 404 for a module belonging to a DRAFT course, so the draft gate can't be bypassed", async () => {
+    const [course] = await db
+      .insert(courses)
+      .values({ code: `${courseCode}-draft`, title: "Draft Course" })
+      .returning();
+    const [courseModule] = await db
+      .insert(modules)
+      .values({ courseId: course.id, moduleType: "scorm", title: "t" })
+      .returning();
+    const [version] = await db
+      .insert(moduleVersions)
+      .values({ moduleId: courseModule.id, versionNumber: 1, status: "published" })
+      .returning();
+    await db.insert(scormModuleVersions).values({
+      moduleVersionId: version.id,
+      gcsPrefix: "draft-prefix",
+      manifestIdentifier: "x",
+      scormVersion: "1.2",
+      launchUrl: "index.html",
+      rawManifestXml: "<manifest/>",
+    });
+
+    try {
+      const response = await GET(
+        new Request(`http://localhost/api/scorm/launch-info/${version.id}`),
+        { params: Promise.resolve({ moduleVersionId: version.id }) }
+      );
+      expect(response.status).toBe(404);
+    } finally {
+      await db
+        .delete(scormModuleVersions)
+        .where(eq(scormModuleVersions.moduleVersionId, version.id));
+      await db.delete(moduleVersions).where(eq(moduleVersions.id, version.id));
+      await db.delete(modules).where(eq(modules.id, courseModule.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+    }
   });
 });
