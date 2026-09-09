@@ -29,6 +29,20 @@
       "when": 1788447348571,
       "tag": "0003_lame_talisman",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788958411758,
+      "tag": "0004_add_departments_and_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788958478713,
+      "tag": "0005_drop_courses_department_text",
+      "breakpoints": true
     }
   ]
 }

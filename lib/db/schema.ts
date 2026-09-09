@@ -8,13 +8,31 @@ import {
   jsonb,
 } from "drizzle-orm/pg-core";
 
+export const departments = pgTable("departments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  entraGroupId: text("entra_group_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const users = pgTable("users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  entraObjectId: text("entra_object_id").notNull().unique(),
+  email: text("email").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  departmentId: uuid("department_id").references(() => departments.id, { onDelete: "set null" }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const courses = pgTable("courses", {
   id: uuid("id").primaryKey().defaultRandom(),
   code: text("code").notNull().unique(),
   title: text("title").notNull(),
   description: text("description"),
   status: text("status").notNull().default("draft"),
-  department: text("department"),
+  departmentId: uuid("department_id").references(() => departments.id, { onDelete: "set null" }),
   thumbnail: text("thumbnail"),
   compliance: boolean("compliance").notNull().default(false),
   dueDate: timestamp("due_date", { withTimezone: true }),
