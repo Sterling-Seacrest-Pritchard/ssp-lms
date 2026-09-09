@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // "standalone" bundles a self-contained server for the Docker/Cloud Run
+  // build - Vercel's own build pipeline expects normal Next.js output and
+  // conflicts with it (fails looking for next-server.js.nft.json in a path
+  // standalone mode doesn't produce). Vercel sets VERCEL=1 during its build.
+  output: process.env.VERCEL ? undefined : "standalone",
   async headers() {
     return [
       {
