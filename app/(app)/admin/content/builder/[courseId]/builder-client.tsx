@@ -347,6 +347,10 @@ export function BuilderClient({
               <Label htmlFor="department">Department</Label>
               <Select
                 value={course.departmentId ?? "none"}
+                items={[
+                  { value: "none", label: "General" },
+                  ...departments.map((dept) => ({ value: dept.id, label: dept.name })),
+                ]}
                 onValueChange={(value) => {
                   const departmentId = value === "none" ? null : (value as string);
                   updateField("departmentId", departmentId);
