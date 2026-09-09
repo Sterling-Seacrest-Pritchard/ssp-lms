@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { modules, moduleVersions, videoModuleVersions } from "@/lib/db/schema";
 import { badRequest, isUuid, serverError } from "@/lib/api/errors";
-import { getMuxClient, countMuxAssets, FREE_TIER_ASSET_LIMIT } from "@/lib/video/mux-client";
+import { beginVideoUpload, FreeTierLimitError } from "@/lib/video/assets";
 
 export async function POST(
   request: NextRequest,
@@ -26,14 +26,14 @@ export async function POST(
       return badRequest("title is required");
     }
 
-    const existingCount = await countMuxAssets();
-    if (existingCount >= FREE_TIER_ASSET_LIMIT) {
-      return NextResponse.json(
-        {
-          error: `Free-tier limit reached (${FREE_TIER_ASSET_LIMIT} stored videos). Remove an existing video before adding another.`,
-        },
-        { status: 409 }
-      );
+    let upload: { videoAssetId: string; uploadUrl: string };
+    try {
+      upload = await beginVideoUpload(title);
+    } catch (error) {
+      if (error instanceof FreeTierLimitError) {
+        return NextResponse.json({ error: error.message }, { status: 409 });
+      }
+      throw error;
     }
 
     const { moduleId, versionId } = await db.transaction(async (tx) => {
@@ -45,26 +45,19 @@ export async function POST(
         .insert(moduleVersions)
         .values({ moduleId: courseModule.id, versionNumber: 1, status: "published", publishedAt: new Date() })
         .returning();
-      await tx.insert(videoModuleVersions).values({ moduleVersionId: version.id, status: "waiting" });
+      await tx
+        .insert(videoModuleVersions)
+        .values({ moduleVersionId: version.id, videoAssetId: upload.videoAssetId });
       await tx.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, courseModule.id));
       return { moduleId: courseModule.id, versionId: version.id };
     });
 
-    const mux = getMuxClient();
-    const upload = await mux.video.uploads.create({
-      cors_origin: "*",
-      new_asset_settings: {
-        playback_policies: ["signed"],
-        video_quality: "basic",
-      },
+    return NextResponse.json({
+      moduleId,
+      moduleVersionId: versionId,
+      videoAssetId: upload.videoAssetId,
+      uploadUrl: upload.uploadUrl,
     });
-
-    await db
-      .update(videoModuleVersions)
-      .set({ muxUploadId: upload.id })
-      .where(eq(videoModuleVersions.moduleVersionId, versionId));
-
-    return NextResponse.json({ moduleId, moduleVersionId: versionId, uploadUrl: upload.url });
   } catch (error) {
     return serverError(error);
   }

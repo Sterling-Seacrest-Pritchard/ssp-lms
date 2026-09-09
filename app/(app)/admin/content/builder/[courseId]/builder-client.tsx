@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   FileArchive,
   GripVertical,
+  Library,
   Loader2,
   PlayCircle,
   Trash2,
@@ -52,6 +53,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CourseForBuilder, BuilderModule } from "@/lib/db/queries";
+import type { LibraryVideo } from "@/lib/video/assets";
 
 function ModuleRow({
   module,
@@ -126,6 +128,10 @@ export function BuilderClient({
   const [scormTitle, setScormTitle] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [libraryVideos, setLibraryVideos] = useState<LibraryVideo[] | null>(null);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [attachingId, setAttachingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // KeyboardSensor alongside the pointer one so the drag handle - already a
   // focusable <button> carrying the dnd-kit activator props - can reorder
@@ -198,7 +204,7 @@ export function BuilderClient({
     }
 
     setVideoStatus("preparing");
-    const { moduleId } = createBody;
+    const { videoAssetId } = createBody;
     // Mux processing is usually done in well under a minute, but give it
     // plenty of headroom before giving up: 100 attempts * 3s = 5 minutes.
     const MAX_POLL_ATTEMPTS = 100;
@@ -212,7 +218,7 @@ export function BuilderClient({
       attempts += 1;
       let statusBody: { status?: string; error?: string } | undefined;
       try {
-        const statusResponse = await fetch(`/api/admin/courses/${course.id}/modules/${moduleId}/video-status`);
+        const statusResponse = await fetch(`/api/admin/videos/${videoAssetId}/status`);
         statusBody = await statusResponse.json();
         if (!statusResponse.ok) {
           throw new Error(statusBody?.error ?? "Status check failed");
@@ -251,6 +257,40 @@ export function BuilderClient({
       setTimeout(poll, 3000);
     };
     poll();
+  }
+
+  async function loadLibraryVideos() {
+    setLibraryLoading(true);
+    setLibraryError(null);
+    try {
+      const response = await fetch("/api/admin/videos");
+      const body = await response.json();
+      if (!response.ok) {
+        setLibraryError(body.error ?? "Could not load the Video Library");
+        return;
+      }
+      setLibraryVideos(body.videos);
+    } catch {
+      setLibraryError("Could not load the Video Library");
+    } finally {
+      setLibraryLoading(false);
+    }
+  }
+
+  async function handleAttachExisting(video: LibraryVideo) {
+    setAttachingId(video.id);
+    const response = await fetch(`/api/admin/courses/${course.id}/modules/video/attach`, {
+      method: "POST",
+      body: JSON.stringify({ videoAssetId: video.id, title: video.title }),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setLibraryError(body.error ?? "Could not add this video");
+      setAttachingId(null);
+      return;
+    }
+    setAddModuleOpen(false);
+    window.location.reload();
   }
 
   async function handleUploadScorm(e: React.FormEvent) {
@@ -460,10 +500,16 @@ export function BuilderClient({
               <DialogHeader>
                 <DialogTitle>Add Module</DialogTitle>
               </DialogHeader>
-              <Tabs defaultValue="scorm">
+              <Tabs
+                defaultValue="scorm"
+                onValueChange={(value) => {
+                  if (value === "existing-video" && libraryVideos === null) loadLibraryVideos();
+                }}
+              >
                 <TabsList>
                   <TabsTrigger value="scorm">Upload SCORM Package</TabsTrigger>
                   <TabsTrigger value="video">Upload Video</TabsTrigger>
+                  <TabsTrigger value="existing-video">Add from Library</TabsTrigger>
                 </TabsList>
                 <TabsContent value="scorm">
                   <form onSubmit={handleUploadScorm} className="flex flex-col gap-4 pt-4">
@@ -541,6 +587,51 @@ export function BuilderClient({
                       {videoUploading ? "Uploading…" : "Upload Video"}
                     </Button>
                   </form>
+                </TabsContent>
+                <TabsContent value="existing-video">
+                  <div className="flex flex-col gap-3 pt-4">
+                    {libraryLoading && (
+                      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading library…
+                      </p>
+                    )}
+                    {libraryError && <p className="text-sm text-destructive">{libraryError}</p>}
+                    {!libraryLoading && libraryVideos?.length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        The Video Library is empty — upload a video there first.
+                      </p>
+                    )}
+                    {libraryVideos && libraryVideos.length > 0 && (
+                      <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+                        {libraryVideos.map((video) => (
+                          <div
+                            key={video.id}
+                            className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2.5"
+                          >
+                            <Library className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">{video.title}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {video.status}
+                                {video.durationSeconds ? ` · ${Math.round(video.durationSeconds / 60)} min` : ""}
+                                {video.moduleCount > 0 ? ` · used in ${video.moduleCount} module(s)` : ""}
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={attachingId === video.id || video.status !== "ready"}
+                              onClick={() => handleAttachExisting(video)}
+                            >
+                              {attachingId === video.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                              Add
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </TabsContent>
               </Tabs>
             </DialogContent>

@@ -21,7 +21,7 @@ async function createTestVideoModule(courseId: string, title: string): Promise<v
     .insert(moduleVersions)
     .values({ moduleId: courseModule.id, versionNumber: 1, status: "published", publishedAt: new Date() })
     .returning();
-  await db.insert(videoModuleVersions).values({ moduleVersionId: version.id, status: "waiting" });
+  await db.insert(videoModuleVersions).values({ moduleVersionId: version.id });
   await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, courseModule.id));
 }
 

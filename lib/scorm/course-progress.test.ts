@@ -9,23 +9,28 @@ import {
   moduleVersions,
   moduleAttempts,
   scormAttemptState,
+  videoAssets,
   videoAttemptState,
   videoModuleVersions,
 } from "@/lib/db/schema";
 
 /**
  * A video module is only tracked once its Mux asset is `ready`, so every
- * video module in these tests needs a real video_module_versions row - the
- * same shape the video-status poll writes once Mux finishes processing.
+ * video module in these tests needs a real video_assets row linked to it -
+ * the same shape the video-status poll writes once Mux finishes processing.
  */
 async function markVideoReady(moduleVersionId: string) {
-  await db.insert(videoModuleVersions).values({
-    moduleVersionId,
-    muxAssetId: `asset-${randomUUID()}`,
-    muxPlaybackId: `playback-${randomUUID()}`,
-    status: "ready",
-    durationSeconds: 60,
-  });
+  const [asset] = await db
+    .insert(videoAssets)
+    .values({
+      title: "Test Video",
+      muxAssetId: `asset-${randomUUID()}`,
+      muxPlaybackId: `playback-${randomUUID()}`,
+      status: "ready",
+      durationSeconds: 60,
+    })
+    .returning();
+  await db.insert(videoModuleVersions).values({ moduleVersionId, videoAssetId: asset.id });
 }
 
 describe("getCourseProgressForLearner", () => {
@@ -226,9 +231,13 @@ describe("getCourseProgressForLearner", () => {
       .update(modules)
       .set({ currentVersionId: videoVersion.id })
       .where(eq(modules.id, videoModule.id));
+    const [erroredAsset] = await db
+      .insert(videoAssets)
+      .values({ title: "Test Video", status: "errored" })
+      .returning();
     await db
       .insert(videoModuleVersions)
-      .values({ moduleVersionId: videoVersion.id, status: "errored" });
+      .values({ moduleVersionId: videoVersion.id, videoAssetId: erroredAsset.id });
     const [attempt] = await db
       .insert(moduleAttempts)
       .values({ moduleVersionId: scormVersion.id, userId, attemptNumber: 1 })

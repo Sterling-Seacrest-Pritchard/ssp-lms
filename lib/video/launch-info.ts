@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { courses, modules, moduleVersions, videoModuleVersions } from "@/lib/db/schema";
+import { courses, modules, moduleVersions, videoAssets, videoModuleVersions } from "@/lib/db/schema";
 import { isUuid } from "@/lib/api/errors";
 
 export interface VideoLaunchInfo {
@@ -63,12 +63,13 @@ export async function getReadyVideoModuleVersionIds(
   const rows = await db
     .select({ moduleVersionId: videoModuleVersions.moduleVersionId })
     .from(videoModuleVersions)
+    .innerJoin(videoAssets, eq(videoAssets.id, videoModuleVersions.videoAssetId))
     .where(
       and(
         inArray(videoModuleVersions.moduleVersionId, ids),
-        eq(videoModuleVersions.status, "ready"),
-        isNotNull(videoModuleVersions.muxPlaybackId),
-        isNotNull(videoModuleVersions.durationSeconds)
+        eq(videoAssets.status, "ready"),
+        isNotNull(videoAssets.muxPlaybackId),
+        isNotNull(videoAssets.durationSeconds)
       )
     );
 
@@ -80,12 +81,13 @@ async function loadLaunchInfoRow(moduleVersionId: string): Promise<VideoLaunchIn
 
   const [row] = await db
     .select({
-      muxPlaybackId: videoModuleVersions.muxPlaybackId,
-      durationSeconds: videoModuleVersions.durationSeconds,
-      videoStatus: videoModuleVersions.status,
+      muxPlaybackId: videoAssets.muxPlaybackId,
+      durationSeconds: videoAssets.durationSeconds,
+      videoStatus: videoAssets.status,
       courseStatus: courses.status,
     })
     .from(videoModuleVersions)
+    .innerJoin(videoAssets, eq(videoAssets.id, videoModuleVersions.videoAssetId))
     .innerJoin(moduleVersions, eq(moduleVersions.id, videoModuleVersions.moduleVersionId))
     .innerJoin(modules, eq(modules.id, moduleVersions.moduleId))
     .innerJoin(courses, eq(courses.id, modules.courseId))

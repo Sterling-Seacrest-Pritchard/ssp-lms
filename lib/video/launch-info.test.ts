@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { courses, modules, moduleVersions, videoModuleVersions } from "@/lib/db/schema";
+import { courses, modules, moduleVersions, videoAssets, videoModuleVersions } from "@/lib/db/schema";
 import {
   getReadyVideoModuleVersionIds,
   getVideoLaunchInfo,
@@ -12,16 +12,18 @@ describe("video launch-info", () => {
   let courseId: string | undefined;
   let moduleId: string | undefined;
   let versionId: string | undefined;
+  let videoAssetId: string | undefined;
 
   afterEach(async () => {
     if (versionId) await db.delete(videoModuleVersions).where(eq(videoModuleVersions.moduleVersionId, versionId));
+    if (videoAssetId) await db.delete(videoAssets).where(eq(videoAssets.id, videoAssetId));
     if (moduleId) {
       await db.update(modules).set({ currentVersionId: null }).where(eq(modules.id, moduleId));
       if (versionId) await db.delete(moduleVersions).where(eq(moduleVersions.id, versionId));
       await db.delete(modules).where(eq(modules.id, moduleId));
     }
     if (courseId) await db.delete(courses).where(eq(courses.id, courseId));
-    courseId = moduleId = versionId = undefined;
+    courseId = moduleId = versionId = videoAssetId = undefined;
   });
 
   async function seed(courseStatus: string, videoStatus: string) {
@@ -32,12 +34,17 @@ describe("video launch-info", () => {
     const [version] = await db.insert(moduleVersions).values({ moduleId: mod.id, versionNumber: 1, status: "published", publishedAt: new Date() }).returning();
     versionId = version.id;
     await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, mod.id));
-    await db.insert(videoModuleVersions).values({
-      moduleVersionId: version.id,
-      muxPlaybackId: "test-playback-id",
-      durationSeconds: 120,
-      status: videoStatus,
-    });
+    const [asset] = await db
+      .insert(videoAssets)
+      .values({
+        title: "x",
+        muxPlaybackId: "test-playback-id",
+        durationSeconds: 120,
+        status: videoStatus,
+      })
+      .returning();
+    videoAssetId = asset.id;
+    await db.insert(videoModuleVersions).values({ moduleVersionId: version.id, videoAssetId: asset.id });
     return version.id;
   }
 
@@ -97,7 +104,9 @@ describe("video launch-info", () => {
         .values({ moduleId: mod.id, versionNumber: 1, status: "published" })
         .returning();
       versionId = version.id;
-      await db.insert(videoModuleVersions).values({ moduleVersionId: version.id, status: "errored" });
+      const [asset] = await db.insert(videoAssets).values({ title: "x", status: "errored" }).returning();
+      videoAssetId = asset.id;
+      await db.insert(videoModuleVersions).values({ moduleVersionId: version.id, videoAssetId: asset.id });
 
       expect(await getReadyVideoModuleVersionIds([version.id])).toEqual(new Set());
     });

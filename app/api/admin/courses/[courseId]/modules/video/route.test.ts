@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { POST } from "./route";
 import { db } from "@/lib/db/client";
-import { courses, modules, moduleVersions, videoModuleVersions } from "@/lib/db/schema";
+import { courses, modules, moduleVersions, videoAssets, videoModuleVersions } from "@/lib/db/schema";
 
 describe("POST /api/admin/courses/[courseId]/modules/video", () => {
   let createdCourseId: string | undefined;
@@ -15,7 +15,14 @@ describe("POST /api/admin/courses/[courseId]/modules/video", () => {
       await db.update(modules).set({ currentVersionId: null }).where(eq(modules.id, m.id));
       const versions = await db.select().from(moduleVersions).where(eq(moduleVersions.moduleId, m.id));
       for (const v of versions) {
+        const [link] = await db
+          .select()
+          .from(videoModuleVersions)
+          .where(eq(videoModuleVersions.moduleVersionId, v.id));
         await db.delete(videoModuleVersions).where(eq(videoModuleVersions.moduleVersionId, v.id));
+        if (link?.videoAssetId) {
+          await db.delete(videoAssets).where(eq(videoAssets.id, link.videoAssetId));
+        }
       }
       await db.delete(moduleVersions).where(eq(moduleVersions.moduleId, m.id));
     }
@@ -38,12 +45,14 @@ describe("POST /api/admin/courses/[courseId]/modules/video", () => {
     expect(body.uploadUrl).toMatch(/^https:\/\//);
     expect(body.moduleVersionId).toBeTruthy();
 
-    const [row] = await db
+    const [link] = await db
       .select()
       .from(videoModuleVersions)
       .where(eq(videoModuleVersions.moduleVersionId, body.moduleVersionId));
-    expect(row.status).toBe("waiting");
-    expect(row.muxUploadId).toBeTruthy();
+    expect(link.videoAssetId).toBe(body.videoAssetId);
+    const [asset] = await db.select().from(videoAssets).where(eq(videoAssets.id, link.videoAssetId!));
+    expect(asset.status).toBe("waiting");
+    expect(asset.muxUploadId).toBeTruthy();
   });
 
   it("rejects a non-UUID courseId", async () => {

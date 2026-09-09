@@ -42,6 +42,35 @@ export async function countMuxAssets(): Promise<number> {
   return count;
 }
 
+export interface MuxAssetSummary {
+  id: string;
+  playbackId: string | null;
+  status: string;
+  durationSeconds: number | null;
+  createdAt: string | null;
+}
+
+/**
+ * Every asset actually in the Mux account, regardless of how it got there -
+ * the Video Library reconciles against this list so a video uploaded
+ * straight through Mux's own dashboard still shows up for review.
+ */
+export async function listAllMuxAssets(): Promise<MuxAssetSummary[]> {
+  const mux = getMuxClient();
+  const assets: MuxAssetSummary[] = [];
+  const page = mux.video.assets.list({ limit: 100 });
+  for await (const asset of page) {
+    assets.push({
+      id: asset.id,
+      playbackId: asset.playback_ids?.[0]?.id ?? null,
+      status: asset.status,
+      durationSeconds: asset.duration ? Math.round(asset.duration) : null,
+      createdAt: asset.created_at ?? null,
+    });
+  }
+  return assets;
+}
+
 /**
  * A 2-hour expiration comfortably covers one viewing session without needing
  * a token-refresh mechanism in the player. `signPlaybackId` is async against

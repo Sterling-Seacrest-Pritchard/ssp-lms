@@ -19,6 +19,7 @@ import {
   moduleVersions,
   scormAttemptState,
   scormModuleVersions,
+  videoAssets,
   videoAttemptState,
   videoModuleVersions,
 } from "./schema";
@@ -32,24 +33,28 @@ import { gcsStorage as supabaseStorage } from "@/lib/storage/gcs";
  * directly so the other exports in this file still have a video module to
  * exercise against.
  */
-async function addVideoModuleForTest(courseId: string): Promise<{ moduleVersionId: string }> {
+async function addVideoModuleForTest(courseId: string): Promise<{ moduleVersionId: string; videoAssetId: string }> {
   const [mod] = await db.insert(modules).values({ courseId, moduleType: "video", title: "Test Video" }).returning();
   const [version] = await db
     .insert(moduleVersions)
     .values({ moduleId: mod.id, versionNumber: 1, status: "published", publishedAt: new Date() })
     .returning();
-  await db.insert(videoModuleVersions).values({
-    moduleVersionId: version.id,
-    muxAssetId: "test-asset-id",
-    muxPlaybackId: "test-playback-id",
-    status: "ready",
-    durationSeconds: 60,
-  });
+  const [asset] = await db
+    .insert(videoAssets)
+    .values({
+      title: "Test Video",
+      muxAssetId: `test-asset-id-${randomUUID()}`,
+      muxPlaybackId: "test-playback-id",
+      status: "ready",
+      durationSeconds: 60,
+    })
+    .returning();
+  await db.insert(videoModuleVersions).values({ moduleVersionId: version.id, videoAssetId: asset.id });
   await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, mod.id));
-  return { moduleVersionId: version.id };
+  return { moduleVersionId: version.id, videoAssetId: asset.id };
 }
 
-async function createTestVideoModule(courseId: string, title: string): Promise<{ moduleVersionId: string }> {
+async function createTestVideoModule(courseId: string, title: string): Promise<{ moduleVersionId: string; videoAssetId: string }> {
   const [courseModule] = await db
     .insert(modules)
     .values({ courseId, moduleType: "video", title })
@@ -58,9 +63,10 @@ async function createTestVideoModule(courseId: string, title: string): Promise<{
     .insert(moduleVersions)
     .values({ moduleId: courseModule.id, versionNumber: 1, status: "published", publishedAt: new Date() })
     .returning();
-  await db.insert(videoModuleVersions).values({ moduleVersionId: version.id, status: "waiting" });
+  const [asset] = await db.insert(videoAssets).values({ title, status: "waiting" }).returning();
+  await db.insert(videoModuleVersions).values({ moduleVersionId: version.id, videoAssetId: asset.id });
   await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, courseModule.id));
-  return { moduleVersionId: version.id };
+  return { moduleVersionId: version.id, videoAssetId: asset.id };
 }
 
 describe("createDraftCourse", () => {
@@ -194,16 +200,16 @@ describe("removeModule", () => {
     }
   });
 
-  it("removes a video module a learner has already watched, deleting its video attempt state", async () => {
+  it("removes a video module a learner has already watched, deleting its video attempt state but leaving the reusable video asset intact", async () => {
     const { id: courseId } = await createDraftCourse();
     const userId = `remove-video-module-test-${randomUUID()}@example.com`;
-    const deleteSpy = vi.fn().mockResolvedValue(undefined);
+    let videoAssetIdToClean: string | undefined;
     try {
       // A real, ready video module (with a Mux asset) plus a real committed
       // learner attempt - the exact shape that used to raise an FK violation
-      // on video_attempt_state and abort the whole removal transaction,
-      // permanently wedging the module's slot against the Mux free-tier cap.
-      const { moduleVersionId } = await addVideoModuleForTest(courseId);
+      // on video_attempt_state and abort the whole removal transaction.
+      const { moduleVersionId, videoAssetId } = await addVideoModuleForTest(courseId);
+      videoAssetIdToClean = videoAssetId;
       const [mod] = await db.select().from(modules).where(eq(modules.currentVersionId, moduleVersionId));
       const [attempt] = await db
         .insert(moduleAttempts)
@@ -215,10 +221,6 @@ describe("removeModule", () => {
         lastPositionSeconds: 42,
         status: "in_progress",
       });
-
-      vi.spyOn(await import("@/lib/video/mux-client"), "getMuxClient").mockReturnValue({
-        video: { assets: { delete: deleteSpy } },
-      } as unknown as ReturnType<typeof import("@/lib/video/mux-client").getMuxClient>);
 
       await removeModule(courseId, mod.id);
 
@@ -238,8 +240,13 @@ describe("removeModule", () => {
           .from(videoModuleVersions)
           .where(eq(videoModuleVersions.moduleVersionId, moduleVersionId))
       ).toHaveLength(0);
+      // The reusable video itself is a Library entry now - removing the
+      // module that used it must never take the underlying asset with it.
+      expect(await db.select().from(videoAssets).where(eq(videoAssets.id, videoAssetId))).toHaveLength(1);
     } finally {
-      vi.restoreAllMocks();
+      if (videoAssetIdToClean) {
+        await db.delete(videoAssets).where(eq(videoAssets.id, videoAssetIdToClean));
+      }
       await db.delete(courses).where(eq(courses.id, courseId));
     }
   });
@@ -295,10 +302,9 @@ describe("removeModule", () => {
     await expect(removeModule(randomUUID(), "not-a-uuid")).resolves.toBeUndefined();
   });
 
-  it("removes a video module and deletes its Mux asset", async () => {
+  it("removes a video module without touching Mux at all - the asset is a reusable Library entry", async () => {
     const { id: courseId } = await createDraftCourse();
-    const { moduleVersionId } = await addVideoModuleForTest(courseId);
-    const [videoRow] = await db.select().from(videoModuleVersions).where(eq(videoModuleVersions.moduleVersionId, moduleVersionId));
+    const { moduleVersionId, videoAssetId } = await addVideoModuleForTest(courseId);
     const [mod] = await db.select().from(modules).where(eq(modules.currentVersionId, moduleVersionId));
 
     const deleteSpy = vi.fn().mockResolvedValue(undefined);
@@ -306,13 +312,18 @@ describe("removeModule", () => {
       video: { assets: { delete: deleteSpy } },
     } as unknown as ReturnType<typeof import("@/lib/video/mux-client").getMuxClient>);
 
-    await removeModule(courseId, mod.id);
+    try {
+      await removeModule(courseId, mod.id);
 
-    expect(deleteSpy).toHaveBeenCalledWith(videoRow.muxAssetId);
-    const remaining = await db.select().from(videoModuleVersions).where(eq(videoModuleVersions.moduleVersionId, moduleVersionId));
-    expect(remaining).toHaveLength(0);
-
-    await db.delete(courses).where(eq(courses.id, courseId));
+      expect(deleteSpy).not.toHaveBeenCalled();
+      const remaining = await db.select().from(videoModuleVersions).where(eq(videoModuleVersions.moduleVersionId, moduleVersionId));
+      expect(remaining).toHaveLength(0);
+      expect(await db.select().from(videoAssets).where(eq(videoAssets.id, videoAssetId))).toHaveLength(1);
+    } finally {
+      vi.restoreAllMocks();
+      await db.delete(videoAssets).where(eq(videoAssets.id, videoAssetId));
+      await db.delete(courses).where(eq(courses.id, courseId));
+    }
   });
 
   it("does nothing if the module belongs to a different course", async () => {

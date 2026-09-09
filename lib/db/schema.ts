@@ -70,15 +70,28 @@ export const scormModuleVersions = pgTable("scorm_module_versions", {
   rawManifestXml: text("raw_manifest_xml").notNull(),
 });
 
+// A video is a standalone, reusable Mux asset - many `video_module_versions`
+// rows (across different modules, even different courses) can point at the
+// same `video_assets` row. Deleting a module never deletes the underlying
+// asset here, only its own link row; the asset only goes away via an
+// explicit Video Library delete (and only once nothing references it).
+export const videoAssets = pgTable("video_assets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  muxUploadId: text("mux_upload_id"),
+  muxAssetId: text("mux_asset_id").unique(),
+  muxPlaybackId: text("mux_playback_id"),
+  title: text("title").notNull().default("Untitled Video"),
+  status: text("status").notNull().default("waiting"),
+  durationSeconds: integer("duration_seconds"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const videoModuleVersions = pgTable("video_module_versions", {
   moduleVersionId: uuid("module_version_id")
     .primaryKey()
     .references(() => moduleVersions.id),
-  muxUploadId: text("mux_upload_id"),
-  muxAssetId: text("mux_asset_id"),
-  muxPlaybackId: text("mux_playback_id"),
-  status: text("status").notNull().default("waiting"),
-  durationSeconds: integer("duration_seconds"),
+  videoAssetId: uuid("video_asset_id").references(() => videoAssets.id),
 });
 
 export const moduleAttempts = pgTable("module_attempts", {
