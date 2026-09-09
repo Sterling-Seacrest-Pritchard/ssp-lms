@@ -91,7 +91,7 @@ export default async function HomePage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {activeCourses.map((course) => (
               <Link key={course.id} href={`/courses/${course.id}`}>
-                <Card className="h-full transition-shadow hover:shadow-md">
+                <Card className="h-full pt-0 transition-shadow hover:shadow-md">
                   <div className={`h-20 rounded-t-xl ${course.thumbnail}`} />
                   <CardHeader>
                     <div className="flex items-start justify-between gap-2">

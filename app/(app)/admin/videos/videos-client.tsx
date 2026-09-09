@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, PlayCircle, Trash2, Upload } from "lucide-react";
+import { Loader2, Pencil, PlayCircle, Trash2, Upload } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +33,7 @@ export function VideosClient() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
 
@@ -159,9 +160,11 @@ export function VideosClient() {
       const body = await response.json().catch(() => ({}));
       setRowError({ id: video.id, message: body.error ?? "Could not delete" });
       setDeletingId(null);
+      setDeleteConfirmId(null);
       return;
     }
     setDeletingId(null);
+    setDeleteConfirmId(null);
     load();
   }
 
@@ -241,8 +244,8 @@ export function VideosClient() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {videos?.map((video) => (
-          <Card key={video.id}>
-            <div className="flex h-32 items-center justify-center rounded-t-xl bg-slate-900">
+          <Card key={video.id} className="pt-0">
+            <div className="flex aspect-square items-center justify-center rounded-t-xl bg-slate-900">
               <PlayCircle className="h-10 w-10 text-white/70" />
             </div>
             <CardHeader>
@@ -262,15 +265,21 @@ export function VideosClient() {
                   </Button>
                 </div>
               ) : (
-                <CardTitle
-                  className="cursor-pointer text-sm leading-snug hover:underline"
-                  onClick={() => {
-                    setRenamingId(video.id);
-                    setRenameValue(video.title);
-                  }}
-                >
-                  {video.title}
-                </CardTitle>
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-sm leading-snug">{video.title}</CardTitle>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Rename video"
+                    onClick={() => {
+                      setRenamingId(video.id);
+                      setRenameValue(video.title);
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               )}
               <p className="text-xs text-muted-foreground">
                 {video.moduleCount > 0
@@ -286,21 +295,41 @@ export function VideosClient() {
                 {statusBadge(video.status)}
               </div>
               {rowError?.id === video.id && <p className="text-xs text-destructive">{rowError.message}</p>}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={video.moduleCount > 0 || deletingId === video.id}
-                onClick={() => handleDelete(video)}
-                title={video.moduleCount > 0 ? "Remove this video from every module first" : "Delete"}
-              >
-                {deletingId === video.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
+              {deleteConfirmId === video.id ? (
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    disabled={deletingId === video.id}
+                    onClick={() => handleDelete(video)}
+                  >
+                    {deletingId === video.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    Confirm Delete
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={deletingId === video.id}
+                    onClick={() => setDeleteConfirmId(null)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={video.moduleCount > 0}
+                  onClick={() => setDeleteConfirmId(video.id)}
+                  title={video.moduleCount > 0 ? "Remove this video from every module first" : "Delete"}
+                >
                   <Trash2 className="h-4 w-4 text-destructive" />
-                )}
-                Delete
-              </Button>
+                  Delete
+                </Button>
+              )}
             </CardContent>
           </Card>
         ))}
