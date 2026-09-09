@@ -43,6 +43,13 @@
       "when": 1788958478713,
       "tag": "0005_drop_courses_department_text",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788961702194,
+      "tag": "0006_departments_name_case_insensitive_unique",
+      "breakpoints": true
     }
   ]
 }

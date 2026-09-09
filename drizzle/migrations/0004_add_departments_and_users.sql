@@ -22,6 +22,10 @@ CREATE TABLE "users" (
 ALTER TABLE "courses" ADD COLUMN "department_id" uuid;--> statement-breakpoint
 ALTER TABLE "users" ADD CONSTRAINT "users_department_id_departments_id_fk" FOREIGN KEY ("department_id") REFERENCES "public"."departments"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "courses" ADD CONSTRAINT "courses_department_id_departments_id_fk" FOREIGN KEY ("department_id") REFERENCES "public"."departments"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+INSERT INTO "departments" ("name")
+SELECT DISTINCT btrim("department") FROM "courses"
+WHERE "department" IS NOT NULL AND btrim("department") <> ''
+ON CONFLICT ("name") DO NOTHING;--> statement-breakpoint
 INSERT INTO "departments" ("name") VALUES
 	('Compliance'),
 	('HR'),
@@ -32,5 +36,5 @@ INSERT INTO "departments" ("name") VALUES
 ON CONFLICT ("name") DO NOTHING;--> statement-breakpoint
 UPDATE "courses" SET "department_id" = "departments"."id"
 FROM "departments"
-WHERE lower("courses"."department") = lower("departments"."name")
+WHERE lower(btrim("courses"."department")) = lower(btrim("departments"."name"))
 	AND "courses"."department_id" IS NULL;

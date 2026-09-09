@@ -34,6 +34,28 @@ describe("POST /api/admin/departments", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 400 for a case-variant duplicate name", async () => {
+    const name = `Dept-${randomUUID()}`;
+    const first = await POST(
+      new NextRequest("http://localhost/api/admin/departments", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      })
+    );
+    const firstBody = await first.json();
+    try {
+      const second = await POST(
+        new NextRequest("http://localhost/api/admin/departments", {
+          method: "POST",
+          body: JSON.stringify({ name: name.toUpperCase() }),
+        })
+      );
+      expect(second.status).toBe(400);
+    } finally {
+      await db.delete(departments).where(eq(departments.id, firstBody.id));
+    }
+  });
+
   it("returns 400 for a duplicate name", async () => {
     const name = `Dept-${randomUUID()}`;
     const first = await POST(

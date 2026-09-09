@@ -14,14 +14,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.roles = profile.roles as string[];
       }
       if (profile?.oid) {
-        try {
-          await upsertUser({
-            entraObjectId: profile.oid as string,
-            email: profile.email as string,
-            displayName: profile.name as string,
-          });
-        } catch (error) {
-          console.error("Failed to upsert user on sign-in; session proceeds without it", error);
+        const email = typeof profile.email === "string" ? profile.email : null;
+        const displayName = typeof profile.name === "string" ? profile.name : null;
+        if (!email || !displayName) {
+          console.error(
+            `Skipping user upsert for oid ${profile.oid as string}: Entra profile missing email or name (email=${String(email)}, name=${String(displayName)})`
+          );
+        } else {
+          try {
+            await upsertUser({ entraObjectId: profile.oid as string, email, displayName });
+          } catch (error) {
+            console.error(`Failed to upsert user ${profile.oid as string} on sign-in; session proceeds without it`, error);
+          }
         }
       }
       return token;

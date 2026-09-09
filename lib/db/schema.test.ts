@@ -47,9 +47,9 @@ describe("minimal SCORM schema", () => {
 describe("departments seed data", () => {
   it("was seeded with the six existing mock department names by the 0004 migration", async () => {
     const rows = await db.select({ name: departments.name }).from(departments);
-    const names = rows.map((r) => r.name).sort();
+    const names = rows.map((r) => r.name);
     expect(names).toEqual(
-      ["Claims", "Compliance", "Engineering", "HR", "IT", "Underwriting"].sort()
+      expect.arrayContaining(["Claims", "Compliance", "Engineering", "HR", "IT", "Underwriting"])
     );
   });
 });
@@ -66,18 +66,18 @@ describe("courses.department_id backfill matching (0004 migration logic)", () =>
     await db.execute(sql.raw(`DROP TABLE IF EXISTS "${tableName}"`));
   });
 
-  it("resolves exact and case-insensitive matches, and leaves no-match as null", async () => {
+  it("resolves exact, case-insensitive, and whitespace-padded matches, and leaves no-match as null", async () => {
     await db.execute(
       sql.raw(`CREATE TABLE "${tableName}" ("id" uuid PRIMARY KEY DEFAULT gen_random_uuid(), "department" text, "department_id" uuid)`)
     );
     await db.execute(
-      sql.raw(`INSERT INTO "${tableName}" ("department") VALUES ('Compliance'), ('hr'), ('Not A Real Department'), (NULL)`)
+      sql.raw(`INSERT INTO "${tableName}" ("department") VALUES ('Compliance'), ('hr'), ('  HR  '), ('Not A Real Department'), (NULL)`)
     );
 
     await db.execute(
       sql.raw(`UPDATE "${tableName}" SET "department_id" = "departments"."id"
         FROM "departments"
-        WHERE lower("${tableName}"."department") = lower("departments"."name")
+        WHERE lower(btrim("${tableName}"."department")) = lower(btrim("departments"."name"))
           AND "${tableName}"."department_id" IS NULL`)
     );
 
@@ -90,6 +90,7 @@ describe("courses.department_id backfill matching (0004 migration logic)", () =>
     const byDept = (dept: string | null) => rows.rows.find((r) => r.department === dept);
     expect(byDept("Compliance")?.department_id).toBe(compliance.id);
     expect(byDept("hr")?.department_id).toBe(hr.id);
+    expect(byDept("  HR  ")?.department_id).toBe(hr.id);
     expect(byDept("Not A Real Department")?.department_id).toBeNull();
     expect(rows.rows.find((r) => r.department === null)?.department_id).toBeNull();
   });

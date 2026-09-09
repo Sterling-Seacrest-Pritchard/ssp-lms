@@ -78,6 +78,11 @@ describe("getDepartmentWithMembers / listUsersNotInDepartment / setUserDepartmen
     expect(result).toBeNull();
   });
 
+  it("returns null for a malformed department id", async () => {
+    const result = await getDepartmentWithMembers("not-a-uuid");
+    expect(result).toBeNull();
+  });
+
   it("moves a user in and out of a department", async () => {
     const dept = await createDepartment(`Dept-${randomUUID()}`);
     const user = await makeUser(null);

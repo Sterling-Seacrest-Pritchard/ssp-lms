@@ -1,6 +1,7 @@
 import { eq, ne, isNull, or, sql } from "drizzle-orm";
 import { db } from "./client";
 import { departments, users } from "./schema";
+import { isUuid } from "@/lib/api/errors";
 
 export async function listDepartments(): Promise<{ id: string; name: string }[]> {
   return db.select({ id: departments.id, name: departments.name }).from(departments).orderBy(departments.name);
@@ -30,6 +31,8 @@ export async function createDepartment(name: string): Promise<{ id: string; name
 export async function getDepartmentWithMembers(
   departmentId: string
 ): Promise<{ id: string; name: string; members: { id: string; email: string; displayName: string }[] } | null> {
+  if (!isUuid(departmentId)) return null;
+
   const [dept] = await db.select().from(departments).where(eq(departments.id, departmentId));
   if (!dept) return null;
 
