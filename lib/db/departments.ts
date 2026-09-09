@@ -1,4 +1,4 @@
-import { eq, ne, isNull, or, sql } from "drizzle-orm";
+import { eq, ne, isNull, or, and, sql } from "drizzle-orm";
 import { db } from "./client";
 import { departments, users } from "./schema";
 import { isUuid } from "@/lib/api/errors";
@@ -47,14 +47,30 @@ export async function getDepartmentWithMembers(
 
 export async function listUsersNotInDepartment(
   departmentId: string
-): Promise<{ id: string; email: string; displayName: string }[]> {
+): Promise<{ id: string; email: string; displayName: string; currentDepartmentName: string | null }[]> {
   return db
-    .select({ id: users.id, email: users.email, displayName: users.displayName })
+    .select({
+      id: users.id,
+      email: users.email,
+      displayName: users.displayName,
+      currentDepartmentName: departments.name,
+    })
     .from(users)
+    .leftJoin(departments, eq(departments.id, users.departmentId))
     .where(or(isNull(users.departmentId), ne(users.departmentId, departmentId)))
     .orderBy(users.displayName);
 }
 
 export async function setUserDepartment(userId: string, departmentId: string | null): Promise<void> {
   await db.update(users).set({ departmentId, updatedAt: new Date() }).where(eq(users.id, userId));
+}
+
+export async function clearUserDepartment(userId: string, departmentId: string): Promise<void> {
+  // Only clear the user's department if they currently belong to *this*
+  // department, so a stale/racing UI can't clear a user out of a
+  // different department they were moved into in the meantime.
+  await db
+    .update(users)
+    .set({ departmentId: null, updatedAt: new Date() })
+    .where(and(eq(users.id, userId), eq(users.departmentId, departmentId)));
 }

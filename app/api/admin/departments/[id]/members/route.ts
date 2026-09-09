@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq, and } from "drizzle-orm";
-import { setUserDepartment } from "@/lib/db/departments";
-import { db } from "@/lib/db/client";
-import { users } from "@/lib/db/schema";
+import { clearUserDepartment, setUserDepartment } from "@/lib/db/departments";
 import { badRequest, isUuid, serverError } from "@/lib/api/errors";
 
 async function parseParams(
@@ -42,13 +39,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const parsed = await parseParams(params, request);
     if (parsed instanceof NextResponse) return parsed;
 
-    // Only clear the user's department if they currently belong to *this*
-    // department, so a stale/racing UI can't clear a user out of a
-    // different department they were moved into in the meantime.
-    await db
-      .update(users)
-      .set({ departmentId: null, updatedAt: new Date() })
-      .where(and(eq(users.id, parsed.userId), eq(users.departmentId, parsed.departmentId)));
+    await clearUserDepartment(parsed.userId, parsed.departmentId);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return serverError(error);

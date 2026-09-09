@@ -19,6 +19,10 @@ interface RosterMember {
   displayName: string;
 }
 
+interface EligibleUser extends RosterMember {
+  currentDepartmentName: string | null;
+}
+
 export function RosterClient({
   departmentId,
   members,
@@ -26,7 +30,7 @@ export function RosterClient({
 }: {
   departmentId: string;
   members: RosterMember[];
-  eligibleUsers: RosterMember[];
+  eligibleUsers: EligibleUser[];
 }) {
   const router = useRouter();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -83,7 +87,7 @@ export function RosterClient({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <Select value={selectedUserId ?? undefined} onValueChange={(value) => setSelectedUserId(value as string)}>
+        <Select value={selectedUserId} onValueChange={(value) => setSelectedUserId(value as string)}>
           <SelectTrigger className="min-w-56">
             <SelectValue placeholder={eligibleUsers.length === 0 ? "No eligible users" : "Choose a user"} />
           </SelectTrigger>
@@ -91,6 +95,7 @@ export function RosterClient({
             {eligibleUsers.map((user) => (
               <SelectItem key={user.id} value={user.id}>
                 {user.displayName} ({user.email})
+                {user.currentDepartmentName ? ` — currently in ${user.currentDepartmentName}` : ""}
               </SelectItem>
             ))}
           </SelectContent>

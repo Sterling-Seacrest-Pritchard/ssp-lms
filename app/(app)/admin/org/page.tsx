@@ -40,16 +40,24 @@ export default async function OrgAdminPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {departments.map((dept) => (
-                  <TableRow key={dept.id}>
-                    <TableCell className="font-medium">
-                      <Link href={`/admin/org/departments/${dept.id}`} className="hover:underline">
-                        {dept.name}
-                      </Link>
+                {departments.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={2} className="text-center text-sm text-muted-foreground">
+                      No departments yet.
                     </TableCell>
-                    <TableCell className="text-right">{dept.memberCount}</TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  departments.map((dept) => (
+                    <TableRow key={dept.id}>
+                      <TableCell className="font-medium">
+                        <Link href={`/admin/org/departments/${dept.id}`} className="hover:underline">
+                          {dept.name}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-right">{dept.memberCount}</TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </CardContent>
