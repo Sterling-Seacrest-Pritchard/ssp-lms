@@ -30,7 +30,13 @@ interface StorageMutationResult {
   error: StorageError | null;
 }
 
-const storage = new Storage();
+// On Cloud Run, Application Default Credentials come from the service's own
+// identity automatically. Platforms without that (e.g. Vercel) need explicit
+// credentials, passed as the full key JSON via GOOGLE_APPLICATION_CREDENTIALS_JSON
+// rather than a file path, since there's no persistent filesystem to point at.
+const storage = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON
+  ? new Storage({ credentials: JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) })
+  : new Storage();
 
 function bucketApi(bucketName: string) {
   const bucket = storage.bucket(bucketName);
