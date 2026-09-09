@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { isAdminRole } from "@/lib/roles";
-import { supabaseStorage } from "@/lib/storage/supabase";
+import { gcsStorage as supabaseStorage } from "@/lib/storage/gcs";
 import { mimeTypeForPath } from "@/lib/scorm/mime-types";
 import { getScormLaunchInfo, getScormLaunchInfoForAdmin } from "@/lib/scorm/launch-info";
 import { isUuid, notFound, serverError } from "@/lib/api/errors";

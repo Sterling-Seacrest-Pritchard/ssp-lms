@@ -7,7 +7,7 @@ import {
   assertLaunchFileExists,
   normalizeEntryName,
 } from "./extract-package";
-import { supabaseStorage } from "@/lib/storage/supabase";
+import { gcsStorage as supabaseStorage } from "@/lib/storage/gcs";
 
 describe("SCORM package extraction", () => {
   const prefix = `test-${randomUUID()}`;

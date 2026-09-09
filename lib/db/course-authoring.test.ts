@@ -22,7 +22,7 @@ import {
   videoModuleVersions,
 } from "./schema";
 import { uploadScormPackage } from "@/lib/scorm/extract-package";
-import { supabaseStorage } from "@/lib/storage/supabase";
+import { gcsStorage as supabaseStorage } from "@/lib/storage/gcs";
 
 /**
  * Test-only replacement for the removed `addVideoPlaceholderModule` (Task 2

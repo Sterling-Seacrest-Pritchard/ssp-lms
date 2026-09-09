@@ -1,5 +1,5 @@
 import AdmZip from "adm-zip";
-import { supabaseStorage } from "@/lib/storage/supabase";
+import { gcsStorage as supabaseStorage } from "@/lib/storage/gcs";
 import { mimeTypeForPath } from "@/lib/scorm/mime-types";
 
 export interface UploadedPackage {

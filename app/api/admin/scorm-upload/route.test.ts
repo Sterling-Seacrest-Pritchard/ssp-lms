@@ -6,7 +6,7 @@ import { eq, inArray } from "drizzle-orm";
 import { POST } from "./route";
 import { db } from "@/lib/db/client";
 import { courses, modules, moduleVersions, scormModuleVersions } from "@/lib/db/schema";
-import { supabaseStorage } from "@/lib/storage/supabase";
+import { gcsStorage as supabaseStorage } from "@/lib/storage/gcs";
 
 function buildSamplePackage() {
   const zip = new AdmZip();
