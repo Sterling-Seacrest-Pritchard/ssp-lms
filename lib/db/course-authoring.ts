@@ -162,6 +162,23 @@ export async function removeModule(courseId: string, moduleId: string): Promise<
   }
 }
 
+export async function deleteCourse(courseId: string): Promise<void> {
+  if (!isUuid(courseId)) return;
+
+  const [course] = await db.select().from(courses).where(eq(courses.id, courseId));
+  if (!course) return;
+
+  // Reuse removeModule's per-module cleanup (Storage/Mux orphan handling,
+  // attempt-row FK ordering) instead of duplicating it - deleting a course is
+  // just "remove every module, then the now-childless course row."
+  const courseModules = await db.select({ id: modules.id }).from(modules).where(eq(modules.courseId, courseId));
+  for (const module of courseModules) {
+    await removeModule(courseId, module.id);
+  }
+
+  await db.delete(courses).where(eq(courses.id, courseId));
+}
+
 export async function reorderModules(courseId: string, orderedModuleIds: string[]): Promise<void> {
   await db.transaction(async (tx) => {
     for (let i = 0; i < orderedModuleIds.length; i++) {

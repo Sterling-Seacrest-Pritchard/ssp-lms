@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   FileArchive,
@@ -108,8 +109,12 @@ export function BuilderClient({
   initialCourse: CourseForBuilder;
   departments: { id: string; name: string }[];
 }) {
+  const router = useRouter();
   const [course, setCourse] = useState(initialCourse);
   const [addModuleOpen, setAddModuleOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
@@ -289,6 +294,19 @@ export function BuilderClient({
     setPublishing(false);
   }
 
+  async function handleDeleteCourse() {
+    setDeleting(true);
+    setDeleteError(null);
+    const response = await fetch(`/api/admin/courses/${course.id}`, { method: "DELETE" });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setDeleteError(body.error ?? "Could not delete course");
+      setDeleting(false);
+      return;
+    }
+    router.push("/admin/content");
+  }
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -307,13 +325,45 @@ export function BuilderClient({
             </Badge>
           </div>
         </div>
-        <Button
-          onClick={handlePublish}
-          disabled={publishing || course.modules.length === 0}
-        >
-          {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          {course.status === "published" ? "Republish" : "Publish"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+            <DialogTrigger
+              render={
+                <Button type="button" variant="outline">
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                  Delete Course
+                </Button>
+              }
+            />
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete &ldquo;{course.title}&rdquo;?</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                This permanently deletes the course and all {course.modules.length}{" "}
+                module{course.modules.length === 1 ? "" : "s"} in it, including any uploaded
+                SCORM packages and videos. This can&apos;t be undone.
+              </p>
+              {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>
+                  Cancel
+                </Button>
+                <Button type="button" variant="destructive" onClick={handleDeleteCourse} disabled={deleting}>
+                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {deleting ? "Deleting…" : "Delete Course"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Button
+            onClick={handlePublish}
+            disabled={publishing || course.modules.length === 0}
+          >
+            {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {course.status === "published" ? "Republish" : "Publish"}
+          </Button>
+        </div>
       </div>
       {publishError && <p className="text-sm text-destructive">{publishError}</p>}
 

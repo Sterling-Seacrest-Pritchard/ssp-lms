@@ -7,6 +7,7 @@ import {
   updateCourseDetails,
   publishCourse,
   removeModule,
+  deleteCourse,
   reorderModules,
 } from "./course-authoring";
 import { db } from "./client";
@@ -336,6 +337,44 @@ describe("removeModule", () => {
       await db.delete(modules).where(inArray(modules.id, moduleIds));
       await db.delete(courses).where(inArray(courses.id, [courseId, otherCourseId]));
     }
+  });
+});
+
+describe("deleteCourse", () => {
+  it("deletes the course and all its modules/versions", async () => {
+    const { id: courseId } = await createDraftCourse();
+    await createTestVideoModule(courseId, "Module A");
+    await createTestVideoModule(courseId, "Module B");
+
+    await deleteCourse(courseId);
+
+    expect(await db.select().from(courses).where(eq(courses.id, courseId))).toHaveLength(0);
+    expect(await db.select().from(modules).where(eq(modules.courseId, courseId))).toHaveLength(0);
+  });
+
+  it("deletes a module a learner has already started along with the course", async () => {
+    const courseId = (await createDraftCourse()).id;
+    const userId = `delete-course-test-${randomUUID()}@example.com`;
+    const { moduleVersionId } = await createTestVideoModule(courseId, "Started");
+    const [attempt] = await db
+      .insert(moduleAttempts)
+      .values({ moduleVersionId, userId, attemptNumber: 1 })
+      .returning();
+
+    // Same FK-ordering hazard removeModule already handles (attempt rows ->
+    // module_versions -> modules -> course); deleteCourse must not regress it
+    // by, say, deleting the course row before its modules are gone.
+    await deleteCourse(courseId);
+
+    expect(await db.select().from(courses).where(eq(courses.id, courseId))).toHaveLength(0);
+    expect(
+      await db.select().from(moduleAttempts).where(eq(moduleAttempts.id, attempt.id))
+    ).toHaveLength(0);
+  });
+
+  it("does nothing for a non-UUID or nonexistent course id", async () => {
+    await expect(deleteCourse("not-a-uuid")).resolves.toBeUndefined();
+    await expect(deleteCourse(randomUUID())).resolves.toBeUndefined();
   });
 });
 
