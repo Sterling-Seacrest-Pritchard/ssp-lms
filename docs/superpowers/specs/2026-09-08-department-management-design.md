@@ -128,6 +128,15 @@ Matches this repo's existing Vitest conventions (`*.test.ts` beside the module, 
 - [ ] Wire `departmentCompletion` reporting to real enrollment/progress data instead of mock
 - [ ] `entra_group_id` sync, if SSP ever wants Entra security groups to drive department membership automatically
 
+### Deferred from implementation review (2026-09-09), not yet fixed
+
+- [ ] Non-UUID or nonexistent `departmentId`/`userId` on course PATCH and members PATCH/DELETE surface as a raw 500, and a nonexistent-but-valid-UUID `userId` on members PATCH silently no-ops with a false `200 {ok:true}` — `updateCourseDetails` passes its body through unvalidated (pre-existing mass-assignment pattern), and neither route checks referenced ids exist before writing. Needs existence checks + tests in `lib/db/course-authoring.ts`, `app/api/admin/courses/[courseId]/route.ts`, and `app/api/admin/departments/[id]/members/route.ts`.
+- [ ] `builder-client.tsx`'s `patchDetails` ignores `response.ok` for all three autosave fields (title/code/department) — a failed save is silent. Pre-existing pattern, not introduced by this feature; fixing it touches all three call sites at once.
+- [ ] `listUsersNotInDepartment` has no pagination or search — fine for a small roster, first thing to break once the org has enough people that the "Add user" dropdown becomes unusable. The spec's original "searchable select" was dropped as YAGNI since this codebase has no combobox component yet; revisit together if this becomes real.
+- [ ] No FK index on `courses.department_id` or `users.department_id` — consistent with the rest of `lib/db/schema.ts` (no `index()` calls anywhere in this codebase yet), not a regression, but worth a whole-schema indexing pass if department-filtered queries get slow.
+- [ ] The `DrizzleQueryError` → `.cause.code` Postgres-error-wrapping behavior (Drizzle 0.45.2 + node-postgres) discovered while building `POST /api/admin/departments` isn't recorded anywhere durable outside this doc — the next route that needs to detect a specific Postgres error code will rediscover it blind. Worth a shared `isUniqueViolation(error)` helper in `lib/api/errors.ts` if a third route ever needs this.
+- [ ] `lib/db/schema.ts`'s Drizzle table definition for `departments` doesn't declare the case-insensitive unique index added in migration `0006` (`CREATE UNIQUE INDEX ... ON departments (lower(name))`) — Drizzle has no functional-index construct to express it, so this is a structural drift between the ORM's model and the real DB schema, not a bug. A future `db:generate` diff against `schema.ts` won't know this index exists.
+
 ## Related
 
 - `Database Design.md` §1 (Identity/RBAC) in the Obsidian vault — original table shapes this spec builds a scoped-down first slice of
