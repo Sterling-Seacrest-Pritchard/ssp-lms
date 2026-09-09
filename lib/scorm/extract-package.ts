@@ -83,7 +83,7 @@ export async function uploadScormPackage(
   for (const entry of packageEntries(zipBuffer)) {
     const path = `${prefix}/${normalizeEntryName(entry.entryName)}`;
     const { error } = await supabaseStorage
-      .from("scorm-packages")
+      .from("ssp-lms-scorm-packages")
       .upload(path, entry.getData(), {
         upsert: true,
         contentType: mimeTypeForPath(entry.entryName),
@@ -105,7 +105,7 @@ export async function uploadScormPackage(
  * flat listing would therefore leave most of a real SCORM package behind.
  */
 async function listPackageObjects(prefix: string): Promise<string[]> {
-  const { data, error } = await supabaseStorage.from("scorm-packages").list(prefix);
+  const { data, error } = await supabaseStorage.from("ssp-lms-scorm-packages").list(prefix);
   if (error) {
     throw new Error(`Failed to list ${prefix}: ${error.message}`);
   }
@@ -135,7 +135,7 @@ export async function deleteScormPackage(prefix: string): Promise<void> {
   const paths = await listPackageObjects(prefix);
   if (paths.length === 0) return;
 
-  const { error } = await supabaseStorage.from("scorm-packages").remove(paths);
+  const { error } = await supabaseStorage.from("ssp-lms-scorm-packages").remove(paths);
   if (error) {
     throw new Error(`Failed to delete ${prefix}: ${error.message}`);
   }

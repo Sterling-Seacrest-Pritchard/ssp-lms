@@ -58,9 +58,9 @@ describe("POST /api/admin/scorm-upload", () => {
     }
 
     if (uploadedPrefix) {
-      const { data } = await supabaseStorage.from("scorm-packages").list(uploadedPrefix);
+      const { data } = await supabaseStorage.from("ssp-lms-scorm-packages").list(uploadedPrefix);
       const paths = (data ?? []).map((f) => `${uploadedPrefix}/${f.name}`);
-      if (paths.length) await supabaseStorage.from("scorm-packages").remove(paths);
+      if (paths.length) await supabaseStorage.from("ssp-lms-scorm-packages").remove(paths);
     }
   });
 
@@ -149,9 +149,9 @@ describe("POST /api/admin/scorm-upload", () => {
     await db.delete(moduleVersions).where(eq(moduleVersions.id, body.moduleVersionId));
     await db.delete(modules).where(inArray(modules.id, modules2004.map((m) => m.id)));
     await db.delete(courses).where(eq(courses.id, course2004.id));
-    const { data } = await supabaseStorage.from("scorm-packages").list(body.prefix);
+    const { data } = await supabaseStorage.from("ssp-lms-scorm-packages").list(body.prefix);
     const paths = (data ?? []).map((f) => `${body.prefix}/${f.name}`);
-    if (paths.length) await supabaseStorage.from("scorm-packages").remove(paths);
+    if (paths.length) await supabaseStorage.from("ssp-lms-scorm-packages").remove(paths);
   });
 
   it("rejects a manifest that references a launch file not present in the zip", async () => {
@@ -219,9 +219,9 @@ describe("POST /api/admin/scorm-upload", () => {
     await db.delete(moduleVersions).where(eq(moduleVersions.id, body.moduleVersionId));
     await db.delete(modules).where(eq(modules.courseId, existingCourse.id));
     await db.delete(courses).where(eq(courses.id, existingCourse.id));
-    const { data } = await supabaseStorage.from("scorm-packages").list(body.prefix);
+    const { data } = await supabaseStorage.from("ssp-lms-scorm-packages").list(body.prefix);
     const paths = (data ?? []).map((f) => `${body.prefix}/${f.name}`);
-    if (paths.length) await supabaseStorage.from("scorm-packages").remove(paths);
+    if (paths.length) await supabaseStorage.from("ssp-lms-scorm-packages").remove(paths);
   });
 
   it("rejects attach mode with a valid-but-nonexistent courseId before uploading anything to Storage", async () => {

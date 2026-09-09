@@ -55,7 +55,7 @@ export async function GET(
     }
 
     const { data, error } = await supabaseStorage
-      .from("scorm-packages")
+      .from("ssp-lms-scorm-packages")
       .download(`${info.gcsPrefix}/${joinedPath}`);
 
     if (error || !data) {
