@@ -6,6 +6,7 @@ describe("requiresAdminRole", () => {
     expect(requiresAdminRole("/admin")).toBe(true);
     expect(requiresAdminRole("/admin/content")).toBe(true);
     expect(requiresAdminRole("/admin/content/builder/abc")).toBe(true);
+    expect(requiresAdminRole("/admin/org/departments/abc")).toBe(true);
   });
 
   it("gates every admin API route this branch adds", () => {
@@ -18,6 +19,8 @@ describe("requiresAdminRole", () => {
       "/api/admin/courses/11111111-1111-1111-1111-111111111111/modules/reorder",
       "/api/admin/courses/11111111-1111-1111-1111-111111111111/modules/22222222-2222-2222-2222-222222222222",
       "/api/admin/scorm-upload",
+      "/api/admin/departments",
+      "/api/admin/departments/11111111-1111-1111-1111-111111111111/members",
     ];
     for (const path of adminApiPaths) {
       expect(requiresAdminRole(path), path).toBe(true);
