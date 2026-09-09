@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import { listRealCourses, getRealCourseDetail, listPublishedCourses, getCourseForBuilder } from "./queries";
 import { db } from "./client";
-import { courses, modules, moduleVersions } from "./schema";
+import { courses, modules, moduleVersions, departments } from "./schema";
 
 describe("listRealCourses", () => {
   const courseCode = `QUERIES-TEST-${randomUUID()}`;
@@ -234,11 +234,12 @@ describe("listPublishedCourses", () => {
   });
 
   it("includes only published courses, with department/thumbnail/compliance/dueDate", async () => {
+    const [dept] = await db.select().from(departments).where(eq(departments.name, "Compliance"));
     await db.insert(courses).values({
       code: courseCode,
       title: "Published List Test",
       status: "published",
-      department: "Compliance",
+      departmentId: dept.id,
       thumbnail: "bg-gradient-to-br from-blue-500 to-indigo-600",
       compliance: true,
       dueDate: new Date("2026-12-01T00:00:00Z"),

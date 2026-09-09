@@ -12,6 +12,7 @@ import {
 import { db } from "./client";
 import {
   courses,
+  departments,
   moduleAttempts,
   modules,
   moduleVersions,
@@ -79,10 +80,11 @@ describe("updateCourseDetails", () => {
   it("updates only the fields provided", async () => {
     const { id } = await createDraftCourse();
     try {
-      await updateCourseDetails(id, { title: "New Title", department: "IT", compliance: true });
+      const [dept] = await db.select().from(departments).where(eq(departments.name, "IT"));
+      await updateCourseDetails(id, { title: "New Title", departmentId: dept.id, compliance: true });
       const [course] = await db.select().from(courses).where(eq(courses.id, id));
       expect(course.title).toBe("New Title");
-      expect(course.department).toBe("IT");
+      expect(course.departmentId).toBe(dept.id);
       expect(course.compliance).toBe(true);
     } finally {
       await db.delete(courses).where(eq(courses.id, id));

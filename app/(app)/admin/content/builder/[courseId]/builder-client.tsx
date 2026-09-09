@@ -33,6 +33,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -94,7 +101,13 @@ function ModuleRow({
   );
 }
 
-export function BuilderClient({ initialCourse }: { initialCourse: CourseForBuilder }) {
+export function BuilderClient({
+  initialCourse,
+  departments,
+}: {
+  initialCourse: CourseForBuilder;
+  departments: { id: string; name: string }[];
+}) {
   const [course, setCourse] = useState(initialCourse);
   const [addModuleOpen, setAddModuleOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -332,13 +345,26 @@ export function BuilderClient({ initialCourse }: { initialCourse: CourseForBuild
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="department">Department</Label>
-              <Input
-                id="department"
-                value={course.department ?? ""}
-                placeholder="General"
-                onChange={(e) => updateField("department", e.target.value)}
-                onBlur={() => patchDetails({ department: course.department })}
-              />
+              <Select
+                value={course.departmentId ?? "none"}
+                onValueChange={(value) => {
+                  const departmentId = value === "none" ? null : (value as string);
+                  updateField("departmentId", departmentId);
+                  patchDetails({ departmentId });
+                }}
+              >
+                <SelectTrigger id="department" className="w-full">
+                  <SelectValue placeholder="General" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">General</SelectItem>
+                  {departments.map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="dueDate">Due Date (optional)</Label>

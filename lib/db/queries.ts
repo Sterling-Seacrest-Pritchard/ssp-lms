@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "./client";
-import { courses, modules } from "./schema";
+import { courses, modules, departments } from "./schema";
 import { isUuid } from "@/lib/api/errors";
 
 export interface RealCourseSummary {
@@ -18,7 +18,7 @@ const courseSummaryColumns = {
   id: courses.id,
   code: courses.code,
   title: courses.title,
-  department: courses.department,
+  department: departments.name,
   thumbnail: courses.thumbnail,
   compliance: courses.compliance,
   dueDate: courses.dueDate,
@@ -43,11 +43,12 @@ export async function listRealCourses(): Promise<RealCourseSummary[]> {
     .select(courseSummaryColumns)
     .from(courses)
     .leftJoin(modules, eq(modules.courseId, courses.id))
+    .leftJoin(departments, eq(departments.id, courses.departmentId))
     .groupBy(
       courses.id,
       courses.code,
       courses.title,
-      courses.department,
+      departments.name,
       courses.thumbnail,
       courses.compliance,
       courses.dueDate
@@ -61,12 +62,13 @@ export async function listPublishedCourses(): Promise<RealCourseSummary[]> {
     .select(courseSummaryColumns)
     .from(courses)
     .leftJoin(modules, eq(modules.courseId, courses.id))
+    .leftJoin(departments, eq(departments.id, courses.departmentId))
     .where(eq(courses.status, "published"))
     .groupBy(
       courses.id,
       courses.code,
       courses.title,
-      courses.department,
+      departments.name,
       courses.thumbnail,
       courses.compliance,
       courses.dueDate
@@ -98,11 +100,13 @@ export interface RealCourseDetail {
 export async function getRealCourseDetail(courseId: string): Promise<RealCourseDetail | null> {
   if (!isUuid(courseId)) return null;
 
-  const [course] = await db
-    .select()
+  const [row] = await db
+    .select({ course: courses, departmentName: departments.name })
     .from(courses)
+    .leftJoin(departments, eq(departments.id, courses.departmentId))
     .where(eq(courses.id, courseId));
-  if (!course || course.status !== "published") return null;
+  if (!row || row.course.status !== "published") return null;
+  const course = row.course;
 
   const courseModules = await db
     .select()
@@ -113,7 +117,7 @@ export async function getRealCourseDetail(courseId: string): Promise<RealCourseD
   return {
     id: course.id,
     title: course.title,
-    department: course.department,
+    department: row.departmentName,
     thumbnail: course.thumbnail,
     compliance: course.compliance,
     dueDate: course.dueDate ? course.dueDate.toISOString() : null,
@@ -145,7 +149,7 @@ export interface CourseForBuilder {
   code: string;
   title: string;
   status: string;
-  department: string | null;
+  departmentId: string | null;
   thumbnail: string | null;
   compliance: boolean;
   dueDate: string | null;
@@ -169,7 +173,7 @@ export async function getCourseForBuilder(courseId: string): Promise<CourseForBu
     code: course.code,
     title: course.title,
     status: course.status,
-    department: course.department,
+    departmentId: course.departmentId,
     thumbnail: course.thumbnail,
     compliance: course.compliance,
     dueDate: course.dueDate ? course.dueDate.toISOString() : null,

@@ -26,7 +26,7 @@ export async function createDraftCourse(): Promise<{ id: string }> {
 export interface CourseDetailsUpdate {
   title?: string;
   code?: string;
-  department?: string | null;
+  departmentId?: string | null;
   compliance?: boolean;
   dueDate?: string | null;
   thumbnail?: string | null;
@@ -39,7 +39,7 @@ export async function updateCourseDetails(
   const update: Record<string, unknown> = {};
   if (fields.title !== undefined) update.title = fields.title;
   if (fields.code !== undefined) update.code = fields.code;
-  if (fields.department !== undefined) update.department = fields.department;
+  if (fields.departmentId !== undefined) update.departmentId = fields.departmentId;
   if (fields.compliance !== undefined) update.compliance = fields.compliance;
   if (fields.dueDate !== undefined) {
     update.dueDate = fields.dueDate ? new Date(fields.dueDate) : null;
