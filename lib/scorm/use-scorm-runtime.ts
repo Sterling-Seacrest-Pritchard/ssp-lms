@@ -13,8 +13,7 @@ export interface UseScormRuntimeResult {
 
 export function useScormRuntime(
   moduleVersionId: string,
-  scormVersion: string,
-  userId: string
+  scormVersion: string
 ): UseScormRuntimeResult {
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const [lastStatus, setLastStatus] = useState<string>("not started");
@@ -27,7 +26,7 @@ export function useScormRuntime(
     async function createAttempt() {
       const response = await fetch("/api/scorm/attempts", {
         method: "POST",
-        body: JSON.stringify({ moduleVersionId, userId }),
+        body: JSON.stringify({ moduleVersionId }),
       });
       if (!response.ok) {
         throw new Error(`Failed to create SCORM attempt (status ${response.status})`);
@@ -83,7 +82,7 @@ export function useScormRuntime(
     return () => {
       cancelled = true;
     };
-  }, [moduleVersionId, scormVersion, userId]);
+  }, [moduleVersionId, scormVersion]);
 
   return { attemptId, lastStatus, error };
 }

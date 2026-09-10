@@ -3,9 +3,16 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { moduleAttempts } from "@/lib/db/schema";
 import { badRequest, isUuid, serverError } from "@/lib/api/errors";
+import { auth } from "@/auth";
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+    const userId = session?.user?.email;
+    if (!userId) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+
     let body: unknown;
     try {
       body = await request.json();
@@ -13,13 +20,14 @@ export async function POST(request: NextRequest) {
       return badRequest("Request body must be valid JSON");
     }
 
-    const { moduleVersionId, userId } = (body ?? {}) as {
-      moduleVersionId?: string;
-      userId?: string;
-    };
+    // userId comes from the session, NEVER the request body - a body-supplied
+    // userId let any signed-in caller impersonate another user's SCORM
+    // attempts (create/number attempts as them). Matches the pattern already
+    // used by app/api/video/attempts/route.ts.
+    const { moduleVersionId } = (body ?? {}) as { moduleVersionId?: string };
 
-    if (!moduleVersionId || !userId) {
-      return badRequest("moduleVersionId and userId are required");
+    if (!moduleVersionId) {
+      return badRequest("moduleVersionId is required");
     }
 
     if (!isUuid(moduleVersionId)) {

@@ -59,14 +59,12 @@ export function ScormPlayer({
   moduleVersionId,
   contentUrl,
   scormVersion,
-  userId,
 }: {
   moduleVersionId: string;
   contentUrl: string;
   scormVersion: string;
-  userId: string;
 }) {
-  const { attemptId, lastStatus, error } = useScormRuntime(moduleVersionId, scormVersion, userId);
+  const { attemptId, lastStatus, error } = useScormRuntime(moduleVersionId, scormVersion);
   const isComplete = SUCCESS_STATUSES.has(lastStatus);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);

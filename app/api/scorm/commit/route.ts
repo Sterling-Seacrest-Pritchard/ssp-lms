@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { scormAttemptState } from "@/lib/db/schema";
-import { badRequest, isUuid, serverError } from "@/lib/api/errors";
+import { moduleAttempts, scormAttemptState } from "@/lib/db/schema";
+import { badRequest, isUuid, notFound, serverError } from "@/lib/api/errors";
+import { auth } from "@/auth";
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+    const sessionUserId = session?.user?.email;
+    if (!sessionUserId) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+
     let body: unknown;
     try {
       body = await request.json();
@@ -24,6 +31,18 @@ export async function POST(request: NextRequest) {
 
     if (!isUuid(attemptId)) {
       return badRequest("attemptId must be a UUID");
+    }
+
+    // The attempt must exist AND belong to the caller. Both misses collapse to
+    // the same 404, matching app/api/video/commit/route.ts's rationale: a 403
+    // would tell an attacker holding a guessed UUID that the attempt is real
+    // and someone else's.
+    const [attempt] = await db
+      .select({ userId: moduleAttempts.userId })
+      .from(moduleAttempts)
+      .where(eq(moduleAttempts.id, attemptId));
+    if (!attempt || attempt.userId !== sessionUserId) {
+      return notFound("Attempt not found");
     }
 
     // SCORM 1.2's flattened CMI uses cmi.core.lesson_status/lesson_location;

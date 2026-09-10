@@ -59,7 +59,6 @@ export default async function LearnerScormPage(
         moduleVersionId={moduleId}
         contentUrl={contentUrl}
         scormVersion={info.scormVersion}
-        userId={userId}
       />
     </div>
   );

@@ -18,11 +18,7 @@ export function ScormLaunch({
   contentUrl: string;
   scormVersion: string;
 }) {
-  const { attemptId, lastStatus } = useScormRuntime(
-    moduleVersionId,
-    scormVersion,
-    "admin-test-user"
-  );
+  const { attemptId, lastStatus } = useScormRuntime(moduleVersionId, scormVersion);
 
   const isSuccess = SUCCESS_STATUSES.has(lastStatus);
   const isFailure = FAILURE_STATUSES.has(lastStatus);
