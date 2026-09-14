@@ -6,6 +6,7 @@ import {
   boolean,
   timestamp,
   jsonb,
+  unique,
 } from "drizzle-orm/pg-core";
 
 export const departments = pgTable("departments", {
@@ -17,7 +18,12 @@ export const departments = pgTable("departments", {
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
-  entraObjectId: text("entra_object_id").notNull().unique(),
+  // Nullable: a user synced in from Entra (see lib/entra/graph-client.ts)
+  // before ever signing in has no Entra Object ID confirmed by a real OIDC
+  // token yet - Graph's appRoleAssignedTo gives one, but the row still gets
+  // "claimed" (this column set for real) on that person's actual first
+  // sign-in, matched by email. See lib/db/users.ts upsertUser.
+  entraObjectId: text("entra_object_id").unique(),
   email: text("email").notNull().unique(),
   displayName: text("display_name").notNull(),
   departmentId: uuid("department_id").references(() => departments.id, { onDelete: "set null" }),
@@ -25,6 +31,22 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const courseAssignments = pgTable(
+  "course_assignments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    courseId: uuid("course_id").notNull().references(() => courses.id),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
+    // The assigning admin's email, or 'entra-sync' if this is ever
+    // auto-assigned by a future department/role rule - always a plain string,
+    // never a users.id FK, so an assignment record outlives the assigner's
+    // own user row being renamed/removed.
+    assignedBy: text("assigned_by"),
+  },
+  (table) => [unique().on(table.courseId, table.userId)]
+);
 
 export const courses = pgTable("courses", {
   id: uuid("id").primaryKey().defaultRandom(),

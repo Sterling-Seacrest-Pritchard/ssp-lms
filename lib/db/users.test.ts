@@ -45,4 +45,34 @@ describe("upsertUser", () => {
       await db.delete(departments).where(eq(departments.id, dept.id));
     }
   });
+
+  it("claims a pre-provisioned (synced-but-never-signed-in) row by email instead of inserting a second one", async () => {
+    const email = `pending-${randomUUID()}@example.com`;
+    const dept = await db
+      .insert(departments)
+      .values({ name: `Dept-${randomUUID()}` })
+      .returning()
+      .then(([d]) => d);
+    // Simulates what an Entra sync would leave behind: a row with no
+    // entraObjectId yet, but already department-assigned by an admin.
+    const [preProvisioned] = await db
+      .insert(users)
+      .values({ email, displayName: "Synced Name", departmentId: dept.id })
+      .returning();
+
+    const realObjectId = randomUUID();
+    try {
+      await upsertUser({ entraObjectId: realObjectId, email, displayName: "Real Sign-In Name" });
+
+      const rows = await db.select().from(users).where(eq(users.email, email));
+      expect(rows).toHaveLength(1);
+      expect(rows[0].id).toBe(preProvisioned.id);
+      expect(rows[0].entraObjectId).toBe(realObjectId);
+      expect(rows[0].displayName).toBe("Real Sign-In Name");
+      expect(rows[0].departmentId).toBe(dept.id);
+    } finally {
+      await db.delete(users).where(eq(users.email, email));
+      await db.delete(departments).where(eq(departments.id, dept.id));
+    }
+  });
 });

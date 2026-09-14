@@ -5,6 +5,7 @@ import { UnavailableState } from "@/components/ui/unavailable-state";
 import { listDepartmentsWithCounts } from "@/lib/db/departments";
 import { departmentCompletion } from "@/lib/mock-data/reporting";
 import { NewDepartmentDialog } from "./new-department-dialog";
+import { UsersSection } from "./users-section";
 
 export default async function OrgAdminPage() {
   let departments;
@@ -91,6 +92,8 @@ export default async function OrgAdminPage() {
           </CardContent>
         </Card>
       </div>
+
+      <UsersSection />
     </div>
   );
 }
