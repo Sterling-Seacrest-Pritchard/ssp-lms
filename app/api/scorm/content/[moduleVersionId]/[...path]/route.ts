@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { isAdminRole } from "@/lib/roles";
-import { gcsStorage as supabaseStorage } from "@/lib/storage/gcs";
+import { gcsStorage } from "@/lib/storage/gcs";
 import { mimeTypeForPath } from "@/lib/scorm/mime-types";
 import { getScormLaunchInfo, getScormLaunchInfoForAdmin } from "@/lib/scorm/launch-info";
 import { isUuid, notFound, serverError } from "@/lib/api/errors";
@@ -54,7 +54,7 @@ export async function GET(
       return notFound("File not found");
     }
 
-    const { data, error } = await supabaseStorage
+    const { data, error } = await gcsStorage
       .from("ssp-lms-scorm-packages")
       .download(`${info.gcsPrefix}/${joinedPath}`);
 

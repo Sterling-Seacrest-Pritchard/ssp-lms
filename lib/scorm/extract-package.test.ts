@@ -7,13 +7,13 @@ import {
   assertLaunchFileExists,
   normalizeEntryName,
 } from "./extract-package";
-import { gcsStorage as supabaseStorage } from "@/lib/storage/gcs";
+import { gcsStorage } from "@/lib/storage/gcs";
 
 describe("SCORM package extraction", () => {
   const prefix = `test-${randomUUID()}`;
 
   afterAll(async () => {
-    await supabaseStorage.from("ssp-lms-scorm-packages").remove([
+    await gcsStorage.from("ssp-lms-scorm-packages").remove([
       `${prefix}/imsmanifest.xml`,
       `${prefix}/index.html`,
     ]);
@@ -31,7 +31,7 @@ describe("SCORM package extraction", () => {
     const result = await uploadScormPackage(zipBuffer, prefix);
     expect(result.prefix).toBe(prefix);
 
-    const { data } = await supabaseStorage.from("ssp-lms-scorm-packages").list(prefix);
+    const { data } = await gcsStorage.from("ssp-lms-scorm-packages").list(prefix);
     const names = (data ?? []).map((f) => f.name).sort();
     expect(names).toEqual(["imsmanifest.xml", "index.html"].sort());
   });
@@ -44,7 +44,7 @@ describe("SCORM package extraction", () => {
     // Content-Type is not a usable signal here - which is precisely why the
     // same-origin proxy at /api/scorm/content sets Content-Type from its own
     // extension mapping instead of echoing Supabase's.
-    const { data, error } = await supabaseStorage.from("ssp-lms-scorm-packages").list(prefix);
+    const { data, error } = await gcsStorage.from("ssp-lms-scorm-packages").list(prefix);
 
     expect(error).toBeNull();
     const indexHtml = (data ?? []).find((f) => f.name === "index.html");

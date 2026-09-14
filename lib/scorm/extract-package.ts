@@ -1,5 +1,5 @@
 import AdmZip from "adm-zip";
-import { gcsStorage as supabaseStorage } from "@/lib/storage/gcs";
+import { gcsStorage } from "@/lib/storage/gcs";
 import { mimeTypeForPath } from "@/lib/scorm/mime-types";
 
 export interface UploadedPackage {
@@ -18,10 +18,11 @@ function packageEntries(zipBuffer: Buffer): ZipEntry[] {
  * Zips built on Windows can store entry names with literal backslash path
  * separators ("sco1\index.html") even though manifest hrefs are always
  * forward-slash ("sco1/index.html", the web/XML convention) - confirmed
- * against a real SCORM 2004 test package. Supabase Storage silently
- * normalizes backslash-in-key to forward slash on upload/download (verified
- * directly against the live bucket), so treating them as equivalent here
- * matches what actually happens once a file reaches Storage.
+ * against a real SCORM 2004 test package. Normalizing here is what makes
+ * them equivalent - GCS object names are literal byte strings with no path
+ * normalization of their own (unlike the prior Supabase Storage backend,
+ * which silently normalized backslash-in-key on upload/download), so this
+ * explicit replace is load-bearing, not just matching backend behavior.
  */
 export function normalizeEntryName(entryName: string): string {
   return entryName.replace(/\\/g, "/");
@@ -82,7 +83,7 @@ export async function uploadScormPackage(
 ): Promise<UploadedPackage> {
   for (const entry of packageEntries(zipBuffer)) {
     const path = `${prefix}/${normalizeEntryName(entry.entryName)}`;
-    const { error } = await supabaseStorage
+    const { error } = await gcsStorage
       .from("ssp-lms-scorm-packages")
       .upload(path, entry.getData(), {
         upsert: true,
@@ -105,7 +106,7 @@ export async function uploadScormPackage(
  * flat listing would therefore leave most of a real SCORM package behind.
  */
 async function listPackageObjects(prefix: string): Promise<string[]> {
-  const { data, error } = await supabaseStorage.from("ssp-lms-scorm-packages").list(prefix);
+  const { data, error } = await gcsStorage.from("ssp-lms-scorm-packages").list(prefix);
   if (error) {
     throw new Error(`Failed to list ${prefix}: ${error.message}`);
   }
@@ -135,7 +136,7 @@ export async function deleteScormPackage(prefix: string): Promise<void> {
   const paths = await listPackageObjects(prefix);
   if (paths.length === 0) return;
 
-  const { error } = await supabaseStorage.from("ssp-lms-scorm-packages").remove(paths);
+  const { error } = await gcsStorage.from("ssp-lms-scorm-packages").remove(paths);
   if (error) {
     throw new Error(`Failed to delete ${prefix}: ${error.message}`);
   }

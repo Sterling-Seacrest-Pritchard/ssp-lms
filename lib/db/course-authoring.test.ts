@@ -24,7 +24,7 @@ import {
   videoModuleVersions,
 } from "./schema";
 import { uploadScormPackage } from "@/lib/scorm/extract-package";
-import { gcsStorage as supabaseStorage } from "@/lib/storage/gcs";
+import { gcsStorage } from "@/lib/storage/gcs";
 
 /**
  * Test-only replacement for the removed `addVideoPlaceholderModule` (Task 2
@@ -283,16 +283,16 @@ describe("removeModule", () => {
 
       await removeModule(courseId, mod.id);
 
-      const { data: rootEntries } = await supabaseStorage.from("ssp-lms-scorm-packages").list(prefix);
+      const { data: rootEntries } = await gcsStorage.from("ssp-lms-scorm-packages").list(prefix);
       expect(rootEntries ?? []).toHaveLength(0);
-      const { data: assetEntries } = await supabaseStorage
+      const { data: assetEntries } = await gcsStorage
         .from("ssp-lms-scorm-packages")
         .list(`${prefix}/assets`);
       expect(assetEntries ?? []).toHaveLength(0);
     } finally {
-      const { data } = await supabaseStorage.from("ssp-lms-scorm-packages").list(prefix);
+      const { data } = await gcsStorage.from("ssp-lms-scorm-packages").list(prefix);
       const paths = (data ?? []).map((f) => `${prefix}/${f.name}`);
-      if (paths.length) await supabaseStorage.from("ssp-lms-scorm-packages").remove(paths);
+      if (paths.length) await gcsStorage.from("ssp-lms-scorm-packages").remove(paths);
       await db.delete(courses).where(eq(courses.id, courseId));
     }
   });

@@ -6,10 +6,11 @@ const pool = new Pool({
   max: 5,
 });
 
-// `pg` emits 'error' on the Pool when an IDLE backend connection dies, which
-// Supabase free-tier does routinely (it drops idle connections and pauses
-// inactive projects). An unhandled 'error' event on an EventEmitter takes the
-// whole Node process down, so log it and let the pool replace the client.
+// `pg` emits 'error' on the Pool when an IDLE backend connection dies - the
+// prior Supabase free-tier backend did this routinely (dropped idle
+// connections, paused inactive projects); Cloud SQL is far less prone to it,
+// but an unhandled 'error' event on an EventEmitter still takes the whole
+// Node process down regardless of backend, so this stays as a safety net.
 pool.on("error", (err) => {
   console.error("Unexpected error on idle database client", err);
 });
