@@ -24,12 +24,18 @@ export async function upsertUser(fields: {
   entraObjectId: string;
   email: string;
   displayName: string;
+  // Only present on the Entra-sync path (see lib/entra/graph-client.ts) -
+  // omitted (not null) on a plain sign-in, so a login never clobbers the
+  // role last seen at sync time.
+  entraRole?: string | null;
 }): Promise<void> {
+  const roleUpdate = fields.entraRole !== undefined ? { entraRole: fields.entraRole } : {};
+
   const [byObjectId] = await db.select().from(users).where(eq(users.entraObjectId, fields.entraObjectId));
   if (byObjectId) {
     await db
       .update(users)
-      .set({ email: fields.email, displayName: fields.displayName, updatedAt: new Date() })
+      .set({ email: fields.email, displayName: fields.displayName, updatedAt: new Date(), ...roleUpdate })
       .where(eq(users.id, byObjectId.id));
     return;
   }
@@ -41,7 +47,7 @@ export async function upsertUser(fields: {
   if (byEmail) {
     await db
       .update(users)
-      .set({ entraObjectId: fields.entraObjectId, displayName: fields.displayName, updatedAt: new Date() })
+      .set({ entraObjectId: fields.entraObjectId, displayName: fields.displayName, updatedAt: new Date(), ...roleUpdate })
       .where(eq(users.id, byEmail.id));
     return;
   }

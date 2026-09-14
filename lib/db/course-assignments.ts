@@ -10,6 +10,8 @@ export interface UserWithStatus {
   departmentId: string | null;
   /** "active" once they've signed in at least once (entraObjectId claimed), "pending" if only synced in from Entra so far. */
   status: "active" | "pending";
+  /** Entra app role last seen at sync time (e.g. "Org Admin", "Learner"), or null if never synced / no distinct role. */
+  entraRole: string | null;
 }
 
 /**
@@ -25,6 +27,7 @@ export async function listUsersWithStatus(): Promise<UserWithStatus[]> {
     displayName: u.displayName,
     departmentId: u.departmentId,
     status: u.entraObjectId ? "active" : "pending",
+    entraRole: u.entraRole,
   }));
 }
 

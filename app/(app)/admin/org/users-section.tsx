@@ -108,7 +108,12 @@ export function UsersSection() {
             ) : (
               filtered.map((u) => (
                 <TableRow key={u.id}>
-                  <TableCell className="font-medium">{u.displayName}</TableCell>
+                  <TableCell className="font-medium">
+                    {u.displayName}
+                    {u.entraRole && (
+                      <span className="ml-2 text-xs font-normal text-muted-foreground">{u.entraRole}</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{u.email}</TableCell>
                   <TableCell>
                     <Badge variant={u.status === "active" ? "secondary" : "outline"}>

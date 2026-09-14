@@ -26,6 +26,10 @@ export const users = pgTable("users", {
   entraObjectId: text("entra_object_id").unique(),
   email: text("email").notNull().unique(),
   displayName: text("display_name").notNull(),
+  // The Entra app role (e.g. "Org Admin", "Learner") last seen for this
+  // person on the Enterprise App, captured by lib/entra/graph-client.ts
+  // during a sync - not the LMS's own admin/learner distinction.
+  entraRole: text("entra_role"),
   departmentId: uuid("department_id").references(() => departments.id, { onDelete: "set null" }),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

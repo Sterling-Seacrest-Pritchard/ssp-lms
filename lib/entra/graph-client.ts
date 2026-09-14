@@ -59,6 +59,13 @@ interface AppRoleAssignment {
   principalId: string;
   principalDisplayName: string;
   principalType: string;
+  appRoleId: string;
+}
+
+interface AppRoleDefinition {
+  id: string;
+  displayName: string | null;
+  value: string | null;
 }
 
 interface GraphListResponse<T> {
@@ -70,6 +77,28 @@ export interface AssignedUser {
   entraObjectId: string;
   displayName: string;
   email: string;
+  entraRole: string | null;
+}
+
+// Graph's well-known "no specific app role" id - assigned when someone has
+// access to the app but the app registration defines no distinct roles (or
+// they weren't assigned one), so there's nothing meaningful to display.
+const DEFAULT_ACCESS_ROLE_ID = "00000000-0000-0000-0000-000000000000";
+
+/** Maps appRoleId -> a human-readable name, for turning appRoleAssignedTo's opaque ids into "Org Admin" / "Learner" etc. */
+async function getAppRoleNames(
+  servicePrincipalId: string,
+  headers: Record<string, string>
+): Promise<Map<string, string>> {
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/servicePrincipals/${servicePrincipalId}?$select=appRoles`,
+    { headers }
+  );
+  if (!response.ok) {
+    throw new Error(`Graph servicePrincipal appRoles request failed: ${response.status} ${await response.text()}`);
+  }
+  const body = (await response.json()) as { appRoles: AppRoleDefinition[] };
+  return new Map(body.appRoles.map((role) => [role.id, role.displayName || role.value || role.id]));
 }
 
 /**
@@ -104,6 +133,7 @@ export async function listAssignedUsers(): Promise<AssignedUser[]> {
   }
 
   const userAssignments = assignments.filter((a) => a.principalType === "User");
+  const roleNames = await getAppRoleNames(servicePrincipalId, headers);
 
   const resolved: AssignedUser[] = [];
   for (const assignment of userAssignments) {
@@ -122,10 +152,13 @@ export async function listAssignedUsers(): Promise<AssignedUser[]> {
     const user = (await response.json()) as { mail: string | null; userPrincipalName: string; displayName: string };
     const email = user.mail ?? user.userPrincipalName;
     if (!email) continue;
+    const entraRole =
+      assignment.appRoleId === DEFAULT_ACCESS_ROLE_ID ? null : (roleNames.get(assignment.appRoleId) ?? null);
     resolved.push({
       entraObjectId: assignment.principalId,
       displayName: user.displayName ?? assignment.principalDisplayName,
       email,
+      entraRole,
     });
   }
   return resolved;

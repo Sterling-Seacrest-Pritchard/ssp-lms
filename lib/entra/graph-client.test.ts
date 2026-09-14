@@ -21,17 +21,23 @@ describe("listAssignedUsers", () => {
     await expect(listAssignedUsers()).rejects.toThrow("ENTRA_SERVICE_PRINCIPAL_ID is required");
   });
 
-  it("resolves each assigned User principal's email, skipping non-User principals", async () => {
+  it("resolves each assigned User principal's email and role, skipping non-User principals", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes("/oauth2/v2.0/token")) {
         return new Response(JSON.stringify({ access_token: "fake-token", expires_in: 3600 }), { status: 200 });
+      }
+      if (url.includes("$select=appRoles")) {
+        return new Response(
+          JSON.stringify({ appRoles: [{ id: "role-admin", displayName: "Org Admin", value: "OrgAdmin" }] }),
+          { status: 200 }
+        );
       }
       if (url.includes("/appRoleAssignedTo")) {
         return new Response(
           JSON.stringify({
             value: [
-              { principalId: "user-1", principalDisplayName: "User One", principalType: "User" },
-              { principalId: "group-1", principalDisplayName: "Some Group", principalType: "Group" },
+              { principalId: "user-1", principalDisplayName: "User One", principalType: "User", appRoleId: "role-admin" },
+              { principalId: "group-1", principalDisplayName: "Some Group", principalType: "Group", appRoleId: "role-admin" },
             ],
           }),
           { status: 200 }
@@ -49,20 +55,32 @@ describe("listAssignedUsers", () => {
 
     const result = await listAssignedUsers();
 
-    expect(result).toEqual([{ entraObjectId: "user-1", displayName: "User One", email: "user.one@example.com" }]);
+    expect(result).toEqual([
+      { entraObjectId: "user-1", displayName: "User One", email: "user.one@example.com", entraRole: "Org Admin" },
+    ]);
     // Only the User principal gets a follow-up email-resolution call, not the Group one.
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
-  it("falls back to userPrincipalName when mail is null", async () => {
+  it("falls back to userPrincipalName when mail is null, and to null role for the default-access app role id", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes("/oauth2/v2.0/token")) {
         return new Response(JSON.stringify({ access_token: "fake-token", expires_in: 3600 }), { status: 200 });
       }
+      if (url.includes("$select=appRoles")) {
+        return new Response(JSON.stringify({ appRoles: [] }), { status: 200 });
+      }
       if (url.includes("/appRoleAssignedTo")) {
         return new Response(
           JSON.stringify({
-            value: [{ principalId: "user-2", principalDisplayName: "User Two", principalType: "User" }],
+            value: [
+              {
+                principalId: "user-2",
+                principalDisplayName: "User Two",
+                principalType: "User",
+                appRoleId: "00000000-0000-0000-0000-000000000000",
+              },
+            ],
           }),
           { status: 200 }
         );
@@ -76,5 +94,6 @@ describe("listAssignedUsers", () => {
 
     const result = await listAssignedUsers();
     expect(result[0].email).toBe("user2@example.com");
+    expect(result[0].entraRole).toBeNull();
   });
 });
