@@ -62,6 +62,58 @@ describe("listAssignedUsers", () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
+  it("collapses multiple assignments for the same person into their single highest-privilege role", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/oauth2/v2.0/token")) {
+        return new Response(JSON.stringify({ access_token: "fake-token", expires_in: 3600 }), { status: 200 });
+      }
+      if (url.includes("$select=appRoles")) {
+        return new Response(
+          JSON.stringify({
+            appRoles: [
+              { id: "role-learner", displayName: "Learner", value: "Learner" },
+              { id: "role-admin", displayName: "Org Admin", value: "OrgAdmin" },
+            ],
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/appRoleAssignedTo")) {
+        // Same person assigned Learner (via an all-employees group) AND Org
+        // Admin (individually) - two separate assignment entries.
+        return new Response(
+          JSON.stringify({
+            value: [
+              { principalId: "user-3", principalDisplayName: "User Three", principalType: "User", appRoleId: "role-learner" },
+              { principalId: "user-3", principalDisplayName: "User Three", principalType: "User", appRoleId: "role-admin" },
+            ],
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/users/user-3")) {
+        return new Response(
+          JSON.stringify({ mail: "user.three@example.com", userPrincipalName: "user3@example.com", displayName: "User Three" }),
+          { status: 200 }
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await listAssignedUsers();
+
+    expect(result).toEqual([
+      { entraObjectId: "user-3", displayName: "User Three", email: "user.three@example.com", entraRole: "Org Admin" },
+    ]);
+    // Deduped to one person before email resolution - only one /users call
+    // for the two assignment entries, not two. (Not asserting total call
+    // count: getGraphAppToken caches its token at module scope, so whether
+    // the token endpoint is hit here depends on test execution order.)
+    const userLookupCalls = fetchMock.mock.calls.filter(([url]) => (url as string).includes("/users/user-3"));
+    expect(userLookupCalls).toHaveLength(1);
+  });
+
   it("falls back to userPrincipalName when mail is null, and to null role for the default-access app role id", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes("/oauth2/v2.0/token")) {

@@ -85,11 +85,22 @@ export interface AssignedUser {
 // they weren't assigned one), so there's nothing meaningful to display.
 const DEFAULT_ACCESS_ROLE_ID = "00000000-0000-0000-0000-000000000000";
 
-/** Maps appRoleId -> a human-readable name, for turning appRoleAssignedTo's opaque ids into "Org Admin" / "Learner" etc. */
-async function getAppRoleNames(
+// This app's own roles (see the "SSP LMS Platform" app registration's
+// appRoles manifest), ranked by privilege. Someone can hold more than one
+// role at once - e.g. Learner via an all-employees group PLUS Org Admin
+// assigned individually - since group and individual app-role assignments
+// coexist. Unranked/unknown role values sort below all of these.
+const ROLE_PRIORITY: Record<string, number> = {
+  OrgAdmin: 3,
+  DepartmentAdmin: 2,
+  Learner: 1,
+};
+
+/** Maps appRoleId -> {name, priority}, for turning appRoleAssignedTo's opaque ids into "Org Admin" / "Learner" etc, ranked by privilege. */
+async function getAppRoles(
   servicePrincipalId: string,
   headers: Record<string, string>
-): Promise<Map<string, string>> {
+): Promise<Map<string, { name: string; priority: number }>> {
   const response = await fetch(
     `https://graph.microsoft.com/v1.0/servicePrincipals/${servicePrincipalId}?$select=appRoles`,
     { headers }
@@ -98,7 +109,12 @@ async function getAppRoleNames(
     throw new Error(`Graph servicePrincipal appRoles request failed: ${response.status} ${await response.text()}`);
   }
   const body = (await response.json()) as { appRoles: AppRoleDefinition[] };
-  return new Map(body.appRoles.map((role) => [role.id, role.displayName || role.value || role.id]));
+  return new Map(
+    body.appRoles.map((role) => [
+      role.id,
+      { name: role.displayName || role.value || role.id, priority: ROLE_PRIORITY[role.value ?? ""] ?? 0 },
+    ])
+  );
 }
 
 /**
@@ -133,10 +149,31 @@ export async function listAssignedUsers(): Promise<AssignedUser[]> {
   }
 
   const userAssignments = assignments.filter((a) => a.principalType === "User");
-  const roleNames = await getAppRoleNames(servicePrincipalId, headers);
+  const appRoles = await getAppRoles(servicePrincipalId, headers);
+
+  // A person can be assigned more than once (e.g. Learner via an
+  // all-employees group AND Org Admin individually) - appRoleAssignedTo
+  // returns one entry per assignment, so collapse to one per principal here,
+  // keeping only the highest-privilege role, before resolving email (which
+  // also avoids a duplicate Graph call per extra assignment).
+  const byPrincipal = new Map<string, { principalId: string; principalDisplayName: string; entraRole: string | null; priority: number }>();
+  for (const assignment of userAssignments) {
+    const role = assignment.appRoleId === DEFAULT_ACCESS_ROLE_ID ? undefined : appRoles.get(assignment.appRoleId);
+    const entraRole = role?.name ?? null;
+    const priority = role?.priority ?? 0;
+    const existing = byPrincipal.get(assignment.principalId);
+    if (!existing || priority > existing.priority) {
+      byPrincipal.set(assignment.principalId, {
+        principalId: assignment.principalId,
+        principalDisplayName: assignment.principalDisplayName,
+        entraRole,
+        priority,
+      });
+    }
+  }
 
   const resolved: AssignedUser[] = [];
-  for (const assignment of userAssignments) {
+  for (const assignment of byPrincipal.values()) {
     const response = await fetch(
       `https://graph.microsoft.com/v1.0/users/${assignment.principalId}?$select=mail,userPrincipalName,displayName`,
       { headers }
@@ -152,13 +189,11 @@ export async function listAssignedUsers(): Promise<AssignedUser[]> {
     const user = (await response.json()) as { mail: string | null; userPrincipalName: string; displayName: string };
     const email = user.mail ?? user.userPrincipalName;
     if (!email) continue;
-    const entraRole =
-      assignment.appRoleId === DEFAULT_ACCESS_ROLE_ID ? null : (roleNames.get(assignment.appRoleId) ?? null);
     resolved.push({
       entraObjectId: assignment.principalId,
       displayName: user.displayName ?? assignment.principalDisplayName,
       email,
-      entraRole,
+      entraRole: assignment.entraRole,
     });
   }
   return resolved;
