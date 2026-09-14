@@ -1,8 +1,10 @@
 /**
  * App-only (client-credentials) Microsoft Graph access, separate from the
- * user-delegated OIDC sign-in flow in auth.ts. Needs a NEW app registration
- * permission (Application.Read.All, admin-consented) and a NEW client secret
- * on the same "SSP LMS" app registration - see the approved design spec
+ * user-delegated OIDC sign-in flow in auth.ts. Needs app registration
+ * permissions (Application.Read.All + User.Read.All, admin-consented; add
+ * GroupMember.Read.All too if any app role is assigned to a Group rather
+ * than individual users - see listAssignedUsers) and a NEW client secret on
+ * the same "SSP LMS" app registration - see the approved design spec
  * ("SSP LMS — User Pre-Provisioning & Entra Sync Design") for the Azure
  * Portal setup this depends on.
  */
@@ -148,7 +150,40 @@ export async function listAssignedUsers(): Promise<AssignedUser[]> {
     url = body["@odata.nextLink"];
   }
 
-  const userAssignments = assignments.filter((a) => a.principalType === "User");
+  const directUserAssignments = assignments.filter((a) => a.principalType === "User");
+  const groupAssignments = assignments.filter((a) => a.principalType === "Group");
+
+  // A Group assignment (e.g. "All Users" -> Learner) doesn't list its
+  // members here - appRoleAssignedTo only gives the group's own id. Expand
+  // each assigned group to its member users (transitiveMembers so nested
+  // groups are covered too) and treat each member as if directly assigned
+  // that same appRoleId, so they flow through the same dedup/priority logic
+  // below as anyone assigned individually.
+  const expandedGroupAssignments: AppRoleAssignment[] = [];
+  for (const groupAssignment of groupAssignments) {
+    let membersUrl: string | undefined =
+      `https://graph.microsoft.com/v1.0/groups/${groupAssignment.principalId}/transitiveMembers/microsoft.graph.user?$select=id,displayName&$top=999`;
+    while (membersUrl) {
+      const response = await fetch(membersUrl, { headers });
+      if (!response.ok) {
+        throw new Error(
+          `Graph group members request failed for group ${groupAssignment.principalId}: ${response.status} ${await response.text()}`
+        );
+      }
+      const body = (await response.json()) as GraphListResponse<{ id: string; displayName: string }>;
+      for (const member of body.value) {
+        expandedGroupAssignments.push({
+          principalId: member.id,
+          principalDisplayName: member.displayName,
+          principalType: "User",
+          appRoleId: groupAssignment.appRoleId,
+        });
+      }
+      membersUrl = body["@odata.nextLink"];
+    }
+  }
+
+  const userAssignments = [...directUserAssignments, ...expandedGroupAssignments];
   const appRoles = await getAppRoles(servicePrincipalId, headers);
 
   // A person can be assigned more than once (e.g. Learner via an
