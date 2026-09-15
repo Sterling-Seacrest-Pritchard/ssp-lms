@@ -17,6 +17,6 @@ export default auth((req) => {
 
 export const config = {
   matcher: [
-    "/((?!sign-in|api/auth|_next/static|_next/image|favicon.ico|icon.png|logo-horizontal-blue.png|logo-horizontal-white.png|logo-shield-blue.png|logo-shield-white.png).*)",
+    "/((?!sign-in|api/auth|api/admin/entra-sync/cron|_next/static|_next/image|favicon.ico|icon.png|logo-horizontal-blue.png|logo-horizontal-white.png|logo-shield-blue.png|logo-shield-white.png).*)",
   ],
 };
