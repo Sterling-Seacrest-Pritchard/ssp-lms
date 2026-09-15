@@ -23,6 +23,11 @@ export async function GET(request: NextRequest) {
     );
     return NextResponse.json(result);
   } catch (error) {
+    // Logged explicitly (not just the 500 response) so a failed run is
+    // findable by searching Vercel's Runtime Logs / Cron Jobs tab, since
+    // there's no automated alert wired up for this route - see the
+    // 2026-09-15 daily-entra-sync-cron log entry for why that was deferred.
+    console.error("Entra cron sync failed:", error);
     return serverError(error);
   }
 }
