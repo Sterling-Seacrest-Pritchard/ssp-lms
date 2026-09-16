@@ -11,6 +11,8 @@ import { getLatestLessonStatus } from "@/lib/scorm/completion-status";
 import { getLatestVideoStatus } from "@/lib/video/completion-status";
 import { getTrackedModuleVersionIds } from "@/lib/scorm/course-progress";
 import { getUserIdByEmail } from "@/lib/db/users";
+import { getEnrollmentId } from "@/lib/db/enrollments";
+import { isAdminRole } from "@/lib/roles";
 import { auth } from "@/auth";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { isNextNotFoundError } from "@/lib/utils";
@@ -36,6 +38,17 @@ export default async function CourseDetailPage(props: PageProps<"/courses/[id]">
       const session = await auth();
       const userEmail = session?.user?.email;
       const userId = userEmail ? await getUserIdByEmail(userEmail) : null;
+
+      // Admins can preview any course without an enrollment (they may be
+      // authoring/reviewing content, not taking it); everyone else must
+      // actually be enrolled - guessing/sharing a course URL shouldn't grant
+      // access to content you weren't assigned.
+      if (!isAdminRole(session?.user?.roles)) {
+        const enrollmentId = userId ? await getEnrollmentId(userId, realCourse.id) : null;
+        if (!enrollmentId) {
+          notFound();
+        }
+      }
 
       // A module is only launchable if it has a player AND something to play.
       // For video that means the Mux asset is actually `ready` - one still

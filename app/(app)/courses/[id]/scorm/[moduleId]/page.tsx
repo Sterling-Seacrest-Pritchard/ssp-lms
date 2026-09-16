@@ -4,6 +4,8 @@ import { auth } from "@/auth";
 import { getScormLaunchInfo } from "@/lib/scorm/launch-info";
 import { getLatestLessonStatus } from "@/lib/scorm/completion-status";
 import { getUserIdByEmail } from "@/lib/db/users";
+import { getEnrollmentId } from "@/lib/db/enrollments";
+import { isAdminRole } from "@/lib/roles";
 import { ScormPlayer } from "@/components/scorm/scorm-player";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { isNextNotFoundError } from "@/lib/utils";
@@ -13,7 +15,7 @@ const FINISHED_STATUSES = new Set(["completed", "passed"]);
 export default async function LearnerScormPage(
   props: PageProps<"/courses/[id]/scorm/[moduleId]">
 ) {
-  const { moduleId } = await props.params;
+  const { id: courseId, moduleId } = await props.params;
 
   const session = await auth();
   const userEmail = session?.user?.email;
@@ -23,6 +25,12 @@ export default async function LearnerScormPage(
   const userId = await getUserIdByEmail(userEmail);
   if (!userId) {
     notFound();
+  }
+  if (!isAdminRole(session.user?.roles)) {
+    const enrollmentId = await getEnrollmentId(userId, courseId);
+    if (!enrollmentId) {
+      notFound();
+    }
   }
 
   let info, lessonStatus;

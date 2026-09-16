@@ -6,6 +6,7 @@ import { VideoPlayer } from "@/components/video/video-player";
 import { getVideoLaunchInfo } from "@/lib/video/launch-info";
 import { getLatestVideoStatus } from "@/lib/video/completion-status";
 import { getUserIdByEmail } from "@/lib/db/users";
+import { getEnrollmentId } from "@/lib/db/enrollments";
 import { signPlaybackToken } from "@/lib/video/mux-client";
 import { MuxVideoPlayer } from "@/components/video/mux-video-player";
 import { isAdminRole } from "@/lib/roles";
@@ -31,6 +32,12 @@ export default async function VideoPage(props: PageProps<"/courses/[id]/video/[m
     const userId = await getUserIdByEmail(userEmail);
     if (!userId) {
       notFound();
+    }
+    if (!isAdminRole(session?.user?.roles)) {
+      const enrollmentId = await getEnrollmentId(userId, id);
+      if (!enrollmentId) {
+        notFound();
+      }
     }
 
     try {
