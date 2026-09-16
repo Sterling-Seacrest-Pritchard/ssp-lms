@@ -57,9 +57,11 @@ import type { LibraryVideo } from "@/lib/video/assets";
 
 function ModuleRow({
   module,
+  courseId,
   onRemove,
 }: {
   module: BuilderModule;
+  courseId: string;
   onRemove: (moduleId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
@@ -91,6 +93,13 @@ function ModuleRow({
       <Badge variant="outline" className="text-[10px] uppercase">
         {module.moduleType}
       </Badge>
+      {module.moduleType === "quiz" && module.moduleVersionId && (
+        <Link href={`/admin/content/builder/${courseId}/quiz/${module.moduleVersionId}`}>
+          <Button type="button" variant="outline" size="sm">
+            Edit Questions
+          </Button>
+        </Link>
+      )}
       <Button
         type="button"
         variant="ghost"
@@ -510,6 +519,7 @@ export function BuilderClient({
                   <TabsTrigger value="scorm">Upload SCORM Package</TabsTrigger>
                   <TabsTrigger value="video">Upload Video</TabsTrigger>
                   <TabsTrigger value="existing-video">Add from Library</TabsTrigger>
+                  <TabsTrigger value="quiz">Add Quiz</TabsTrigger>
                 </TabsList>
                 <TabsContent value="scorm">
                   <form onSubmit={handleUploadScorm} className="flex flex-col gap-4 pt-4">
@@ -633,6 +643,30 @@ export function BuilderClient({
                     )}
                   </div>
                 </TabsContent>
+                <TabsContent value="quiz">
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      const formData = new FormData(e.currentTarget);
+                      const title = formData.get("title") as string;
+                      const response = await fetch(`/api/admin/courses/${course.id}/modules/quiz`, {
+                        method: "POST",
+                        body: JSON.stringify({ title }),
+                      });
+                      if (response.ok) {
+                        setAddModuleOpen(false);
+                        router.refresh();
+                      }
+                    }}
+                    className="flex flex-col gap-4 pt-4"
+                  >
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="quiz-title">Quiz title</Label>
+                      <Input id="quiz-title" name="title" required placeholder="Module Quiz" />
+                    </div>
+                    <Button type="submit">Create Quiz</Button>
+                  </form>
+                </TabsContent>
               </Tabs>
             </DialogContent>
           </Dialog>
@@ -650,7 +684,12 @@ export function BuilderClient({
                 strategy={verticalListSortingStrategy}
               >
                 {course.modules.map((module) => (
-                  <ModuleRow key={module.id} module={module} onRemove={handleRemoveModule} />
+                  <ModuleRow
+                    key={module.id}
+                    module={module}
+                    courseId={course.id}
+                    onRemove={handleRemoveModule}
+                  />
                 ))}
               </SortableContext>
             </DndContext>
