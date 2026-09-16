@@ -209,19 +209,27 @@ export const quizAttemptAnswers = pgTable(
   (table) => [unique().on(table.moduleAttemptId, table.questionId)]
 );
 
-export const moduleAttempts = pgTable("module_attempts", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  moduleVersionId: uuid("module_version_id")
-    .notNull()
-    .references(() => moduleVersions.id),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id),
-  attemptNumber: integer("attempt_number").notNull().default(1),
-  status: text("status").notNull().default("in_progress"),
-  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
-  endedAt: timestamp("ended_at", { withTimezone: true }),
-});
+export const moduleAttempts = pgTable(
+  "module_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    moduleVersionId: uuid("module_version_id")
+      .notNull()
+      .references(() => moduleVersions.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    attemptNumber: integer("attempt_number").notNull().default(1),
+    status: text("status").notNull().default("in_progress"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+  },
+  // Backstop for the count-then-insert race in lib/db/module-attempts.ts:
+  // two concurrent requests can both read the same previous-attempts count,
+  // so this constraint turns the loser into a 23505 the app retries, instead
+  // of two rows silently sharing an attempt_number.
+  (table) => [unique().on(table.moduleVersionId, table.userId, table.attemptNumber)]
+);
 
 export const scormAttemptState = pgTable("scorm_attempt_state", {
   moduleAttemptId: uuid("module_attempt_id")
