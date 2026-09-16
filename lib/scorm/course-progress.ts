@@ -1,10 +1,11 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { modules } from "@/lib/db/schema";
+import { enrollments, modules, moduleProgress } from "@/lib/db/schema";
 import { isUuid } from "@/lib/api/errors";
 import { getLatestLessonStatus } from "./completion-status";
 import { getLatestVideoStatus } from "@/lib/video/completion-status";
 import { getReadyVideoModuleVersionIds } from "@/lib/video/launch-info";
+import { getUserIdByEmail } from "@/lib/db/users";
 
 const FINISHED_STATUSES = new Set(["completed", "passed"]);
 const VIDEO_FINISHED_STATUSES = new Set(["completed"]);
@@ -77,7 +78,7 @@ async function isModuleFinishedForUser(
   return lessonStatus !== null && FINISHED_STATUSES.has(lessonStatus);
 }
 
-export async function getCourseProgressForLearner(
+export async function computeLiveCourseProgress(
   courseId: string,
   userId: string
 ): Promise<CourseProgress> {
@@ -108,6 +109,52 @@ export async function getCourseProgressForLearner(
     return { status: "not-started", progress: 0 };
   }
   if (completedCount === trackedModules.length) {
+    return { status: "completed", progress: 100 };
+  }
+  return { status: "in-progress", progress };
+}
+
+export async function getCourseProgressForLearner(
+  courseId: string,
+  userEmail: string
+): Promise<CourseProgress> {
+  if (!isUuid(courseId)) {
+    return { status: "not-started", progress: 0 };
+  }
+
+  const userId = await getUserIdByEmail(userEmail);
+  if (!userId) {
+    return { status: "not-started", progress: 0 };
+  }
+
+  const [enrollment] = await db
+    .select()
+    .from(enrollments)
+    .where(and(eq(enrollments.userId, userId), eq(enrollments.courseId, courseId)));
+  if (!enrollment) {
+    return { status: "not-started", progress: 0 };
+  }
+
+  const courseModules = await db.select().from(modules).where(eq(modules.courseId, courseId));
+  const published: TrackableModule[] = courseModules.flatMap((m) =>
+    m.currentVersionId ? [{ moduleType: m.moduleType, moduleVersionId: m.currentVersionId }] : []
+  );
+  const trackedIds = await getTrackedModuleVersionIds(published);
+  if (trackedIds.size === 0) {
+    return { status: "not-started", progress: 0 };
+  }
+
+  const progressRows = await db
+    .select({ status: moduleProgress.status })
+    .from(moduleProgress)
+    .where(eq(moduleProgress.enrollmentId, enrollment.id));
+  const completedCount = progressRows.filter((p) => p.status === "completed").length;
+  const progress = Math.round((completedCount / trackedIds.size) * 100);
+
+  if (completedCount === 0) {
+    return { status: "not-started", progress: 0 };
+  }
+  if (enrollment.status === "completed") {
     return { status: "completed", progress: 100 };
   }
   return { status: "in-progress", progress };

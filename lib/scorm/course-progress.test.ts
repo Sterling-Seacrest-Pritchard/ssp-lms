@@ -1,7 +1,7 @@
 import { describe, it, expect, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
-import { getCourseProgressForLearner } from "./course-progress";
+import { computeLiveCourseProgress, getCourseProgressForLearner } from "./course-progress";
 import { db } from "@/lib/db/client";
 import {
   courses,
@@ -12,6 +12,9 @@ import {
   videoAssets,
   videoAttemptState,
   videoModuleVersions,
+  enrollments,
+  moduleProgress,
+  users,
 } from "@/lib/db/schema";
 
 /**
@@ -33,7 +36,7 @@ async function markVideoReady(moduleVersionId: string) {
   await db.insert(videoModuleVersions).values({ moduleVersionId, videoAssetId: asset.id });
 }
 
-describe("getCourseProgressForLearner", () => {
+describe("computeLiveCourseProgress", () => {
   const courseCode = `COURSE-PROGRESS-TEST-${randomUUID()}`;
   const userId = "course-progress-test@example.com";
 
@@ -89,7 +92,7 @@ describe("getCourseProgressForLearner", () => {
       .returning();
     await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, mod.id));
 
-    const result = await getCourseProgressForLearner(course.id, userId);
+    const result = await computeLiveCourseProgress(course.id, userId);
 
     expect(result).toEqual({ status: "not-started", progress: 0 });
   });
@@ -117,7 +120,7 @@ describe("getCourseProgressForLearner", () => {
       .values({ moduleAttemptId: attempt.id, lessonStatus: "completed", rawCmi: {} });
 
     try {
-      const result = await getCourseProgressForLearner(course.id, userId);
+      const result = await computeLiveCourseProgress(course.id, userId);
 
       expect(result).toEqual({ status: "completed", progress: 100 });
     } finally {
@@ -173,7 +176,7 @@ describe("getCourseProgressForLearner", () => {
       .values({ moduleAttemptId: attempt.id, lessonStatus: "completed", rawCmi: {} });
 
     try {
-      const result = await getCourseProgressForLearner(course.id, userId);
+      const result = await computeLiveCourseProgress(course.id, userId);
 
       expect(result).toEqual({ status: "in-progress", progress: 50 });
     } finally {
@@ -247,7 +250,7 @@ describe("getCourseProgressForLearner", () => {
       .values({ moduleAttemptId: attempt.id, lessonStatus: "completed", rawCmi: {} });
 
     try {
-      const result = await getCourseProgressForLearner(course.id, userId);
+      const result = await computeLiveCourseProgress(course.id, userId);
 
       expect(result).toEqual({ status: "completed", progress: 100 });
     } finally {
@@ -318,7 +321,7 @@ describe("getCourseProgressForLearner", () => {
       .values({ moduleAttemptId: videoAttempt.id, status: "completed" });
 
     try {
-      const result = await getCourseProgressForLearner(course.id, userId);
+      const result = await computeLiveCourseProgress(course.id, userId);
 
       expect(result).toEqual({ status: "completed", progress: 100 });
     } finally {
@@ -343,7 +346,7 @@ describe("getCourseProgressForLearner", () => {
   });
 
   it("returns not-started for a non-UUID course id instead of hitting Postgres", async () => {
-    expect(await getCourseProgressForLearner("not-a-uuid", userId)).toEqual({
+    expect(await computeLiveCourseProgress("not-a-uuid", userId)).toEqual({
       status: "not-started",
       progress: 0,
     });
@@ -381,7 +384,7 @@ describe("getCourseProgressForLearner", () => {
       .values({ moduleAttemptId: attemptA.id, lessonStatus: "completed", rawCmi: {} });
 
     try {
-      const result = await getCourseProgressForLearner(course.id, userId);
+      const result = await computeLiveCourseProgress(course.id, userId);
 
       expect(result).toEqual({ status: "in-progress", progress: 50 });
     } finally {
@@ -394,6 +397,51 @@ describe("getCourseProgressForLearner", () => {
       await db.delete(moduleVersions).where(inArray(moduleVersions.id, [versionA.id, versionB.id]));
       await db.delete(modules).where(inArray(modules.id, [modA.id, modB.id]));
       await db.delete(courses).where(eq(courses.id, course.id));
+    }
+  });
+});
+
+describe("getCourseProgressForLearner (persisted)", () => {
+  it("returns not-started with no enrollment (falls back to not-started rather than throwing)", async () => {
+    const [course] = await db
+      .insert(courses)
+      .values({ code: `PERSISTED-${randomUUID()}`, title: "Persisted Progress Test" })
+      .returning();
+    try {
+      const result = await getCourseProgressForLearner(course.id, "nobody@example.com");
+      expect(result).toEqual({ status: "not-started", progress: 0 });
+    } finally {
+      await db.delete(courses).where(eq(courses.id, course.id));
+    }
+  });
+
+  it("reads status/progress directly from the enrollment and module_progress rows", async () => {
+    const email = `persisted-${randomUUID()}@example.com`;
+    const [user] = await db.insert(users).values({ email, displayName: "Persisted Test" }).returning();
+    const [course] = await db
+      .insert(courses)
+      .values({ code: `PERSISTED-READ-${randomUUID()}`, title: "Persisted Read Test" })
+      .returning();
+    const [mod] = await db.insert(modules).values({ courseId: course.id, moduleType: "scorm", title: "M1" }).returning();
+    const [version] = await db.insert(moduleVersions).values({ moduleId: mod.id, versionNumber: 1, status: "published" }).returning();
+    await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, mod.id));
+    const [enrollment] = await db
+      .insert(enrollments)
+      .values({ userId: user.id, courseId: course.id, status: "in_progress" })
+      .returning();
+    await db.insert(moduleProgress).values({ enrollmentId: enrollment.id, moduleId: mod.id, status: "completed" });
+
+    try {
+      const result = await getCourseProgressForLearner(course.id, email);
+      expect(result).toEqual({ status: "in-progress", progress: 100 });
+    } finally {
+      await db.delete(moduleProgress).where(eq(moduleProgress.enrollmentId, enrollment.id));
+      await db.delete(enrollments).where(eq(enrollments.id, enrollment.id));
+      await db.update(modules).set({ currentVersionId: null }).where(eq(modules.id, mod.id));
+      await db.delete(moduleVersions).where(eq(moduleVersions.id, version.id));
+      await db.delete(modules).where(eq(modules.id, mod.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+      await db.delete(users).where(eq(users.id, user.id));
     }
   });
 });
