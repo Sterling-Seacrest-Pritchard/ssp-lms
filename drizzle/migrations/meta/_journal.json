@@ -71,6 +71,13 @@
       "when": 1789562737403,
       "tag": "0010_enrollments_module_progress",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789565720912,
+      "tag": "0011_module_attempts_user_id_uuid_add",
+      "breakpoints": true
     }
   ]
 }

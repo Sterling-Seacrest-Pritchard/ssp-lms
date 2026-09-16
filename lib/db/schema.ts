@@ -163,6 +163,9 @@ export const moduleAttempts = pgTable("module_attempts", {
     .notNull()
     .references(() => moduleVersions.id),
   userId: text("user_id").notNull(),
+  // Backfilled from users.email in migration 0011; becomes the real user_id
+  // (renamed, NOT NULL, FK-constrained) in migration 0012 once verified.
+  userIdNew: uuid("user_id_new").references(() => users.id),
   attemptNumber: integer("attempt_number").notNull().default(1),
   status: text("status").notNull().default("in_progress"),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
