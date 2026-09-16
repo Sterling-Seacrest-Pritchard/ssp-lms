@@ -54,3 +54,8 @@ export async function upsertUser(fields: {
 
   await db.insert(users).values(fields);
 }
+
+export async function getUserIdByEmail(email: string): Promise<string | null> {
+  const [row] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
+  return row?.id ?? null;
+}

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { upsertUser } from "./users";
+import { upsertUser, getUserIdByEmail } from "./users";
 import { db } from "./client";
 import { users, departments } from "./schema";
 
@@ -74,5 +74,21 @@ describe("upsertUser", () => {
       await db.delete(users).where(eq(users.email, email));
       await db.delete(departments).where(eq(departments.id, dept.id));
     }
+  });
+});
+
+describe("getUserIdByEmail", () => {
+  it("returns the user's id for a known email", async () => {
+    const email = `lookup-${randomUUID()}@example.com`;
+    const [user] = await db.insert(users).values({ email, displayName: "Lookup Test" }).returning();
+    try {
+      expect(await getUserIdByEmail(email)).toBe(user.id);
+    } finally {
+      await db.delete(users).where(eq(users.id, user.id));
+    }
+  });
+
+  it("returns null for an unknown email", async () => {
+    expect(await getUserIdByEmail(`unknown-${randomUUID()}@example.com`)).toBeNull();
   });
 });
