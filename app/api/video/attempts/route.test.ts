@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { POST } from "./route";
@@ -39,7 +40,7 @@ describe("POST /api/video/attempts", () => {
       .values({ email: SESSION_USER_EMAIL, displayName: "Session User" })
       .returning();
     sessionUserId = sessionUser.id;
-    const [course] = await db.insert(courses).values({ code: `ATTEMPT-${Date.now()}`, title: "x" }).returning();
+    const [course] = await db.insert(courses).values({ code: `ATTEMPT-${randomUUID()}`, title: "x" }).returning();
     courseId = course.id;
     const [mod] = await db.insert(modules).values({ courseId: course.id, moduleType: "video", title: "x" }).returning();
     const [version] = await db.insert(moduleVersions).values({ moduleId: mod.id, versionNumber: 1, status: "published", publishedAt: new Date() }).returning();

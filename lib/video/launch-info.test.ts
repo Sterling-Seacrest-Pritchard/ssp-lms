@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { courses, modules, moduleVersions, videoAssets, videoModuleVersions } from "@/lib/db/schema";
@@ -27,7 +28,7 @@ describe("video launch-info", () => {
   });
 
   async function seed(courseStatus: string, videoStatus: string) {
-    const [course] = await db.insert(courses).values({ code: `LAUNCH-${Date.now()}`, title: "x", status: courseStatus }).returning();
+    const [course] = await db.insert(courses).values({ code: `LAUNCH-${randomUUID()}`, title: "x", status: courseStatus }).returning();
     courseId = course.id;
     const [mod] = await db.insert(modules).values({ courseId: course.id, moduleType: "video", title: "x" }).returning();
     moduleId = mod.id;
@@ -91,7 +92,7 @@ describe("video launch-info", () => {
     it("excludes an errored video with no asset - the state Task 1's backfill left placeholders in", async () => {
       const [course] = await db
         .insert(courses)
-        .values({ code: `LAUNCH-ERR-${Date.now()}`, title: "x", status: "published" })
+        .values({ code: `LAUNCH-ERR-${randomUUID()}`, title: "x", status: "published" })
         .returning();
       courseId = course.id;
       const [mod] = await db

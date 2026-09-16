@@ -61,7 +61,7 @@ describe("POST /api/scorm/commit", () => {
 
   async function seedAttempt(userEmail?: string) {
     const userId = userEmail === undefined ? sessionUserId : await getOrCreateUserId(userEmail);
-    const [course] = await db.insert(courses).values({ code: `COMMIT-${Date.now()}`, title: "t" }).returning();
+    const [course] = await db.insert(courses).values({ code: `COMMIT-${randomUUID()}`, title: "t" }).returning();
     courseId = course.id;
     const [courseModule] = await db
       .insert(modules)

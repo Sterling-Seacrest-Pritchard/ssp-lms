@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
+import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { POST } from "./route";
@@ -32,7 +33,7 @@ describe("POST /api/admin/courses/[courseId]/modules/video", () => {
   });
 
   it("creates a waiting video module and returns a Mux upload URL", async () => {
-    const [course] = await db.insert(courses).values({ code: `VIDTEST-${Date.now()}`, title: "Video Test" }).returning();
+    const [course] = await db.insert(courses).values({ code: `VIDTEST-${randomUUID()}`, title: "Video Test" }).returning();
     createdCourseId = course.id;
 
     const request = new NextRequest(`http://localhost/api/admin/courses/${course.id}/modules/video`, {
@@ -65,7 +66,7 @@ describe("POST /api/admin/courses/[courseId]/modules/video", () => {
   });
 
   it("rejects a request with no title", async () => {
-    const [course] = await db.insert(courses).values({ code: `VIDTEST-${Date.now()}`, title: "Video Test" }).returning();
+    const [course] = await db.insert(courses).values({ code: `VIDTEST-${randomUUID()}`, title: "Video Test" }).returning();
     createdCourseId = course.id;
     const request = new NextRequest(`http://localhost/api/admin/courses/${course.id}/modules/video`, {
       method: "POST",

@@ -32,7 +32,7 @@ describe("getLatestVideoStatus", () => {
       .values({ email: `video-status-test-${randomUUID()}@example.com`, displayName: "Video Status Test User" })
       .returning();
     userId = testUser.id;
-    const [course] = await db.insert(courses).values({ code: `VIDSTATUS2-${Date.now()}`, title: "x" }).returning();
+    const [course] = await db.insert(courses).values({ code: `VIDSTATUS2-${randomUUID()}`, title: "x" }).returning();
     courseId = course.id;
     const [mod] = await db.insert(modules).values({ courseId: course.id, moduleType: "video", title: "x" }).returning();
     moduleId = mod.id;

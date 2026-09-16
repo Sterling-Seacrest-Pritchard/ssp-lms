@@ -61,7 +61,7 @@ describe("POST /api/video/commit", () => {
 
   async function seedAttempt(userEmail?: string) {
     const userId = userEmail === undefined ? sessionUserId : await getOrCreateUserId(userEmail);
-    const [course] = await db.insert(courses).values({ code: `COMMIT-${Date.now()}`, title: "x" }).returning();
+    const [course] = await db.insert(courses).values({ code: `COMMIT-${randomUUID()}`, title: "x" }).returning();
     courseId = course.id;
     const [mod] = await db.insert(modules).values({ courseId: course.id, moduleType: "video", title: "x" }).returning();
     const [version] = await db.insert(moduleVersions).values({ moduleId: mod.id, versionNumber: 1, status: "published", publishedAt: new Date() }).returning();
