@@ -60,7 +60,7 @@ export default async function CoursesPage() {
       const published: RealCourseSummary[] = await listEnrolledPublishedCourses(userId);
       realCourses = await Promise.all(
         published.map(async (course) => {
-          const { status, progress } = await getCourseProgressForLearner(course.id, userEmail);
+          const { status, progress } = await getCourseProgressForLearner(course.id, userId);
           return {
             id: course.id,
             title: course.title,

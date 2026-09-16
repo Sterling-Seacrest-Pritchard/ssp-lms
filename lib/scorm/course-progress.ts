@@ -5,7 +5,6 @@ import { isUuid } from "@/lib/api/errors";
 import { getLatestLessonStatus } from "./completion-status";
 import { getLatestVideoStatus } from "@/lib/video/completion-status";
 import { getReadyVideoModuleVersionIds } from "@/lib/video/launch-info";
-import { getUserIdByEmail } from "@/lib/db/users";
 
 const FINISHED_STATUSES = new Set(["completed", "passed"]);
 const VIDEO_FINISHED_STATUSES = new Set(["completed"]);
@@ -65,7 +64,7 @@ export async function getTrackedModuleVersionIds(
   );
 }
 
-async function isModuleFinishedForUser(
+export async function isModuleFinishedForUser(
   moduleType: string,
   moduleVersionId: string,
   userId: string
@@ -116,14 +115,9 @@ export async function computeLiveCourseProgress(
 
 export async function getCourseProgressForLearner(
   courseId: string,
-  userEmail: string
+  userId: string
 ): Promise<CourseProgress> {
   if (!isUuid(courseId)) {
-    return { status: "not-started", progress: 0 };
-  }
-
-  const userId = await getUserIdByEmail(userEmail);
-  if (!userId) {
     return { status: "not-started", progress: 0 };
   }
 
@@ -136,26 +130,44 @@ export async function getCourseProgressForLearner(
   }
 
   const courseModules = await db.select().from(modules).where(eq(modules.courseId, courseId));
-  const published: TrackableModule[] = courseModules.flatMap((m) =>
-    m.currentVersionId ? [{ moduleType: m.moduleType, moduleVersionId: m.currentVersionId }] : []
+  // Bridge module-VERSION-ids (what getTrackedModuleVersionIds works in) to
+  // module-ids (what module_progress rows are keyed by) - same approach
+  // recomputeEnrollmentStatus (lib/db/module-progress.ts) already uses. This
+  // matters when a completed module is later unpublished/removed: without
+  // intersecting against the currently-tracked set, a stale module_progress
+  // row could inflate completedCount past the current tracked-module count
+  // and push progress over 100%.
+  const trackable = courseModules.flatMap((m) =>
+    m.currentVersionId
+      ? [{ moduleType: m.moduleType, moduleVersionId: m.currentVersionId, moduleId: m.id }]
+      : []
   );
-  const trackedIds = await getTrackedModuleVersionIds(published);
-  if (trackedIds.size === 0) {
+  const trackedVersionIds = await getTrackedModuleVersionIds(trackable);
+  const trackedModuleIds = new Set(
+    trackable.filter((m) => trackedVersionIds.has(m.moduleVersionId)).map((m) => m.moduleId)
+  );
+  if (trackedModuleIds.size === 0) {
     return { status: "not-started", progress: 0 };
   }
 
   const progressRows = await db
-    .select({ status: moduleProgress.status })
+    .select({ moduleId: moduleProgress.moduleId, status: moduleProgress.status })
     .from(moduleProgress)
     .where(eq(moduleProgress.enrollmentId, enrollment.id));
-  const completedCount = progressRows.filter((p) => p.status === "completed").length;
-  const progress = Math.round((completedCount / trackedIds.size) * 100);
+  const completedCount = progressRows.filter(
+    (p) => trackedModuleIds.has(p.moduleId) && p.status === "completed"
+  ).length;
+  const progress = Math.round((completedCount / trackedModuleIds.size) * 100);
 
-  if (completedCount === 0) {
-    return { status: "not-started", progress: 0 };
-  }
+  // Checked BEFORE the zero-progress short-circuit: an enrollment already
+  // marked completed must always render as completed/100%, whether or not
+  // module_progress rows happen to exist for it (e.g. a backfilled
+  // enrollment, or a future data-repair path).
   if (enrollment.status === "completed") {
     return { status: "completed", progress: 100 };
+  }
+  if (completedCount === 0) {
+    return { status: "not-started", progress: 0 };
   }
   return { status: "in-progress", progress };
 }

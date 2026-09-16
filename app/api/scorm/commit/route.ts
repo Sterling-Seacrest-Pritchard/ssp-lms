@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      await recordModuleCompletion({ userEmail, moduleVersionId: attempt.moduleVersionId });
+      await recordModuleCompletion({ userId: sessionUserId, moduleVersionId: attempt.moduleVersionId });
     } catch (error) {
       console.error("recordModuleCompletion failed after a successful SCORM commit", error);
     }

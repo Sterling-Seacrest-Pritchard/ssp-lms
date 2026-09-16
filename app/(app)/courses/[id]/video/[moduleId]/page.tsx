@@ -5,6 +5,7 @@ import { courses } from "@/lib/mock-data/courses";
 import { VideoPlayer } from "@/components/video/video-player";
 import { getVideoLaunchInfo } from "@/lib/video/launch-info";
 import { getLatestVideoStatus } from "@/lib/video/completion-status";
+import { getUserIdByEmail } from "@/lib/db/users";
 import { signPlaybackToken } from "@/lib/video/mux-client";
 import { MuxVideoPlayer } from "@/components/video/mux-video-player";
 import { isAdminRole } from "@/lib/roles";
@@ -23,7 +24,11 @@ export default async function VideoPage(props: PageProps<"/courses/[id]/video/[m
     // already established by the real SCORM route
     // (app/(app)/courses/[id]/scorm/[moduleId]/page.tsx).
     const session = await auth();
-    const userId = session?.user?.email;
+    const userEmail = session?.user?.email;
+    if (!userEmail) {
+      notFound();
+    }
+    const userId = await getUserIdByEmail(userEmail);
     if (!userId) {
       notFound();
     }

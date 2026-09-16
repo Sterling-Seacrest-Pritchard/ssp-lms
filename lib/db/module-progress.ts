@@ -2,7 +2,6 @@ import { and, eq } from "drizzle-orm";
 import { db } from "./client";
 import { enrollments, modules, moduleProgress, moduleVersions } from "./schema";
 import { getEnrollmentId } from "./enrollments";
-import { getUserIdByEmail } from "./users";
 import { getLatestLessonStatus } from "@/lib/scorm/completion-status";
 import { getLatestVideoStatus } from "@/lib/video/completion-status";
 import { getTrackedModuleVersionIds } from "@/lib/scorm/course-progress";
@@ -13,6 +12,11 @@ const FINISHED_VIDEO_STATUSES = new Set(["completed"]);
 /**
  * Called by both commit routes (app/api/scorm/commit, app/api/video/commit)
  * after they've written the raw scorm_attempt_state/video_attempt_state row.
+ * `userId` is already a resolved users.id UUID by the time it gets here -
+ * both callers resolve it from the session a couple of lines before calling
+ * this, so re-resolving it from an email here would just be a redundant
+ * lookup on this hot path.
+ *
  * Failures here must never surface as a failed commit response - a
  * progress-cache write failure is recoverable on the next commit, but a lost
  * attempt-state write is not (see spec Error Handling). Callers wrap this in
@@ -23,22 +27,18 @@ const FINISHED_VIDEO_STATUSES = new Set(["completed"]);
  * which launches modules for people who were never assigned/enrolled.
  */
 export async function recordModuleCompletion(params: {
-  userEmail: string;
+  userId: string;
   moduleVersionId: string;
 }): Promise<void> {
-  const userId = await getUserIdByEmail(params.userEmail);
-  if (!userId) {
-    console.error(`recordModuleCompletion: no matching users row for email ${params.userEmail}`);
-    return;
-  }
+  const { userId, moduleVersionId } = params;
 
   const [moduleRow] = await db
     .select({ moduleId: modules.id, courseId: modules.courseId, moduleType: modules.moduleType })
     .from(moduleVersions)
     .innerJoin(modules, eq(modules.id, moduleVersions.moduleId))
-    .where(eq(moduleVersions.id, params.moduleVersionId));
+    .where(eq(moduleVersions.id, moduleVersionId));
   if (!moduleRow) {
-    console.error(`recordModuleCompletion: no matching module for moduleVersionId ${params.moduleVersionId}`);
+    console.error(`recordModuleCompletion: no matching module for moduleVersionId ${moduleVersionId}`);
     return;
   }
 
@@ -48,7 +48,7 @@ export async function recordModuleCompletion(params: {
     return;
   }
 
-  const finished = await isModuleFinished(moduleRow.moduleType, params.moduleVersionId, userId);
+  const finished = await isModuleFinished(moduleRow.moduleType, moduleVersionId, userId);
 
   const [existingProgress] = await db
     .select({ status: moduleProgress.status })
@@ -76,12 +76,12 @@ export async function recordModuleCompletion(params: {
   }
 }
 
-async function isModuleFinished(moduleType: string, moduleVersionId: string, userEmail: string): Promise<boolean> {
+async function isModuleFinished(moduleType: string, moduleVersionId: string, userId: string): Promise<boolean> {
   if (moduleType === "video") {
-    const status = await getLatestVideoStatus(moduleVersionId, userEmail);
+    const status = await getLatestVideoStatus(moduleVersionId, userId);
     return status !== null && FINISHED_VIDEO_STATUSES.has(status);
   }
-  const lessonStatus = await getLatestLessonStatus(moduleVersionId, userEmail);
+  const lessonStatus = await getLatestLessonStatus(moduleVersionId, userId);
   return lessonStatus !== null && FINISHED_LESSON_STATUSES.has(lessonStatus);
 }
 

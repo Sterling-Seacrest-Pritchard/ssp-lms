@@ -10,6 +10,7 @@ import { getRealCourseDetail } from "@/lib/db/queries";
 import { getLatestLessonStatus } from "@/lib/scorm/completion-status";
 import { getLatestVideoStatus } from "@/lib/video/completion-status";
 import { getTrackedModuleVersionIds } from "@/lib/scorm/course-progress";
+import { getUserIdByEmail } from "@/lib/db/users";
 import { auth } from "@/auth";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { isNextNotFoundError } from "@/lib/utils";
@@ -33,7 +34,8 @@ export default async function CourseDetailPage(props: PageProps<"/courses/[id]">
       }
 
       const session = await auth();
-      const userId = session?.user?.email;
+      const userEmail = session?.user?.email;
+      const userId = userEmail ? await getUserIdByEmail(userEmail) : null;
 
       // A module is only launchable if it has a player AND something to play.
       // For video that means the Mux asset is actually `ready` - one still

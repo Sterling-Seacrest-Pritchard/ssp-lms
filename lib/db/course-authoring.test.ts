@@ -14,7 +14,9 @@ import { db } from "./client";
 import {
   courses,
   departments,
+  enrollments,
   moduleAttempts,
+  moduleProgress,
   modules,
   moduleVersions,
   scormAttemptState,
@@ -201,6 +203,17 @@ describe("removeModule", () => {
       await db
         .insert(scormAttemptState)
         .values({ moduleAttemptId: attempt.id, lessonStatus: "incomplete", rawCmi: {} });
+      // An enrollment (created for every assignment, per Task 4) plus a
+      // module_progress row referencing both this module and this attempt -
+      // before the I1 fix, deleting module_attempts/modules while this row
+      // still existed raised a 23503 foreign key violation.
+      const [enrollment] = await db
+        .insert(enrollments)
+        .values({ userId, courseId })
+        .returning();
+      await db
+        .insert(moduleProgress)
+        .values({ enrollmentId: enrollment.id, moduleId: mod.id, status: "incomplete", latestAttemptId: attempt.id });
 
       // module_attempts.module_version_id is a NOT NULL FK with no cascade, so
       // before the FK cleanup this threw and aborted the transaction.
@@ -216,7 +229,11 @@ describe("removeModule", () => {
           .from(scormAttemptState)
           .where(eq(scormAttemptState.moduleAttemptId, attempt.id))
       ).toHaveLength(0);
+      expect(
+        await db.select().from(moduleProgress).where(eq(moduleProgress.enrollmentId, enrollment.id))
+      ).toHaveLength(0);
     } finally {
+      await db.delete(enrollments).where(eq(enrollments.userId, userId));
       await db.delete(courses).where(eq(courses.id, courseId));
       await db.delete(users).where(eq(users.id, userId));
     }
@@ -398,10 +415,21 @@ describe("deleteCourse", () => {
       .returning();
     const userId = testUser.id;
     const { moduleVersionId } = await createTestVideoModule(courseId, "Started");
+    const [mod] = await db.select().from(modules).where(eq(modules.courseId, courseId));
     const [attempt] = await db
       .insert(moduleAttempts)
       .values({ moduleVersionId, userId, attemptNumber: 1 })
       .returning();
+    // enrollments.course_id and module_progress.enrollment_id are both NOT
+    // NULL FKs with no cascade - before the I1 fix, deleting the course while
+    // this enrollment (and its progress row) still existed raised a 23503.
+    const [enrollment] = await db
+      .insert(enrollments)
+      .values({ userId, courseId })
+      .returning();
+    await db
+      .insert(moduleProgress)
+      .values({ enrollmentId: enrollment.id, moduleId: mod.id, status: "incomplete" });
 
     try {
       // Same FK-ordering hazard removeModule already handles (attempt rows ->
@@ -412,6 +440,12 @@ describe("deleteCourse", () => {
       expect(await db.select().from(courses).where(eq(courses.id, courseId))).toHaveLength(0);
       expect(
         await db.select().from(moduleAttempts).where(eq(moduleAttempts.id, attempt.id))
+      ).toHaveLength(0);
+      expect(
+        await db.select().from(enrollments).where(eq(enrollments.id, enrollment.id))
+      ).toHaveLength(0);
+      expect(
+        await db.select().from(moduleProgress).where(eq(moduleProgress.enrollmentId, enrollment.id))
       ).toHaveLength(0);
     } finally {
       await db.delete(users).where(eq(users.id, userId));

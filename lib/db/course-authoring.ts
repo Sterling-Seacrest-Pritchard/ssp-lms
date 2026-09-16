@@ -3,7 +3,9 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "./client";
 import {
   courses,
+  enrollments,
   moduleAttempts,
+  moduleProgress,
   modules,
   moduleVersions,
   scormAttemptState,
@@ -80,6 +82,14 @@ export async function removeModule(courseId: string, moduleId: string): Promise<
   await db.transaction(async (tx) => {
     await tx.update(modules).set({ currentVersionId: null }).where(eq(modules.id, courseModule.id));
 
+    // module_progress.module_id is a NOT NULL FK with `onDelete: no action`
+    // against modules, AND module_progress.latest_attempt_id is a nullable FK
+    // against module_attempts - so this must be deleted before both the
+    // module_attempts rows below and the modules row at the end, or either
+    // delete 23503s once an enrollment (created for every assignment, per
+    // Task 4) has ever produced a progress row for this module.
+    await tx.delete(moduleProgress).where(eq(moduleProgress.moduleId, courseModule.id));
+
     const versions = await tx
       .select()
       .from(moduleVersions)
@@ -155,6 +165,12 @@ export async function deleteCourse(courseId: string): Promise<void> {
   for (const module of courseModules) {
     await removeModule(courseId, module.id);
   }
+
+  // enrollments.course_id is a NOT NULL FK with `onDelete: no action` -
+  // every module's module_progress rows are already gone by now (removeModule
+  // above), so the enrollment rows themselves are safe to delete before the
+  // course row.
+  await db.delete(enrollments).where(eq(enrollments.courseId, courseId));
 
   await db.delete(courses).where(eq(courses.id, courseId));
 }

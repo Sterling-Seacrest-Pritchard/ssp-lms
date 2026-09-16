@@ -45,7 +45,7 @@ describe("recordModuleCompletion", () => {
   it("upserts module_progress as completed and rolls the enrollment up to completed for a single-module course", async () => {
     const { user, course, mod, version, enrollment, attempt } = await seedScormModuleWithAttempt("completed");
     try {
-      await recordModuleCompletion({ userEmail: user.email, moduleVersionId: version.id });
+      await recordModuleCompletion({ userId: user.id, moduleVersionId: version.id });
 
       const [progress] = await db
         .select()
@@ -72,7 +72,7 @@ describe("recordModuleCompletion", () => {
   it("marks the enrollment in_progress (not completed) when the module is only incomplete", async () => {
     const { user, course, mod, version, enrollment, attempt } = await seedScormModuleWithAttempt("incomplete");
     try {
-      await recordModuleCompletion({ userEmail: user.email, moduleVersionId: version.id });
+      await recordModuleCompletion({ userId: user.id, moduleVersionId: version.id });
 
       const [updatedEnrollment] = await db.select().from(enrollments).where(eq(enrollments.id, enrollment.id));
       expect(updatedEnrollment.status).toBe("in_progress");
@@ -103,7 +103,7 @@ describe("recordModuleCompletion", () => {
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
-      await expect(recordModuleCompletion({ userEmail: user.email, moduleVersionId: version.id })).resolves.not.toThrow();
+      await expect(recordModuleCompletion({ userId: user.id, moduleVersionId: version.id })).resolves.not.toThrow();
       const progressRows = await db.select().from(moduleProgress);
       expect(progressRows.find((p) => p.moduleId === mod.id)).toBeUndefined();
       expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("recordModuleCompletion: no enrollment"));

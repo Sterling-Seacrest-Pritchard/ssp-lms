@@ -3,6 +3,7 @@ import { CheckCircle2 } from "lucide-react";
 import { auth } from "@/auth";
 import { getScormLaunchInfo } from "@/lib/scorm/launch-info";
 import { getLatestLessonStatus } from "@/lib/scorm/completion-status";
+import { getUserIdByEmail } from "@/lib/db/users";
 import { ScormPlayer } from "@/components/scorm/scorm-player";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { isNextNotFoundError } from "@/lib/utils";
@@ -15,7 +16,11 @@ export default async function LearnerScormPage(
   const { moduleId } = await props.params;
 
   const session = await auth();
-  const userId = session?.user?.email;
+  const userEmail = session?.user?.email;
+  if (!userEmail) {
+    notFound();
+  }
+  const userId = await getUserIdByEmail(userEmail);
   if (!userId) {
     notFound();
   }

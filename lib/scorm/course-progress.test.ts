@@ -431,7 +431,7 @@ describe("getCourseProgressForLearner (persisted)", () => {
       .values({ code: `PERSISTED-${randomUUID()}`, title: "Persisted Progress Test" })
       .returning();
     try {
-      const result = await getCourseProgressForLearner(course.id, "nobody@example.com");
+      const result = await getCourseProgressForLearner(course.id, randomUUID());
       expect(result).toEqual({ status: "not-started", progress: 0 });
     } finally {
       await db.delete(courses).where(eq(courses.id, course.id));
@@ -441,6 +441,7 @@ describe("getCourseProgressForLearner (persisted)", () => {
   it("reads status/progress directly from the enrollment and module_progress rows", async () => {
     const email = `persisted-${randomUUID()}@example.com`;
     const [user] = await db.insert(users).values({ email, displayName: "Persisted Test" }).returning();
+    const userId = user.id;
     const [course] = await db
       .insert(courses)
       .values({ code: `PERSISTED-READ-${randomUUID()}`, title: "Persisted Read Test" })
@@ -455,10 +456,80 @@ describe("getCourseProgressForLearner (persisted)", () => {
     await db.insert(moduleProgress).values({ enrollmentId: enrollment.id, moduleId: mod.id, status: "completed" });
 
     try {
-      const result = await getCourseProgressForLearner(course.id, email);
+      const result = await getCourseProgressForLearner(course.id, userId);
       expect(result).toEqual({ status: "in-progress", progress: 100 });
     } finally {
       await db.delete(moduleProgress).where(eq(moduleProgress.enrollmentId, enrollment.id));
+      await db.delete(enrollments).where(eq(enrollments.id, enrollment.id));
+      await db.update(modules).set({ currentVersionId: null }).where(eq(modules.id, mod.id));
+      await db.delete(moduleVersions).where(eq(moduleVersions.id, version.id));
+      await db.delete(modules).where(eq(modules.id, mod.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+      await db.delete(users).where(eq(users.id, user.id));
+    }
+  });
+
+  it("does not exceed 100% when a completed module's version is later unpublished, by intersecting module_progress against the currently-tracked module set (I2)", async () => {
+    const email = `persisted-unpublished-${randomUUID()}@example.com`;
+    const [user] = await db.insert(users).values({ email, displayName: "Persisted Unpublished Test" }).returning();
+    const [course] = await db
+      .insert(courses)
+      .values({ code: `PERSISTED-UNPUB-${randomUUID()}`, title: "Persisted Unpublished Test" })
+      .returning();
+    const [modA] = await db.insert(modules).values({ courseId: course.id, moduleType: "scorm", title: "M1" }).returning();
+    const [modB] = await db.insert(modules).values({ courseId: course.id, moduleType: "scorm", title: "M2" }).returning();
+    const [versionA] = await db.insert(moduleVersions).values({ moduleId: modA.id, versionNumber: 1, status: "published" }).returning();
+    const [versionB] = await db.insert(moduleVersions).values({ moduleId: modB.id, versionNumber: 1, status: "published" }).returning();
+    await db.update(modules).set({ currentVersionId: versionA.id }).where(eq(modules.id, modA.id));
+    await db.update(modules).set({ currentVersionId: versionB.id }).where(eq(modules.id, modB.id));
+    const [enrollment] = await db
+      .insert(enrollments)
+      .values({ userId: user.id, courseId: course.id, status: "in_progress" })
+      .returning();
+    // Both modules were completed while tracked...
+    await db.insert(moduleProgress).values({ enrollmentId: enrollment.id, moduleId: modA.id, status: "completed" });
+    await db.insert(moduleProgress).values({ enrollmentId: enrollment.id, moduleId: modB.id, status: "completed" });
+    // ...but modB was since removed/unpublished (currentVersionId cleared),
+    // so only modA is in the currently-tracked set. Before the I2 fix,
+    // completedCount counted both stale rows against a denominator of 1,
+    // producing 200%.
+    await db.update(modules).set({ currentVersionId: null }).where(eq(modules.id, modB.id));
+
+    try {
+      const result = await getCourseProgressForLearner(course.id, user.id);
+      expect(result).toEqual({ status: "in-progress", progress: 100 });
+    } finally {
+      await db.delete(moduleProgress).where(eq(moduleProgress.enrollmentId, enrollment.id));
+      await db.delete(enrollments).where(eq(enrollments.id, enrollment.id));
+      await db.update(modules).set({ currentVersionId: null }).where(inArray(modules.id, [modA.id, modB.id]));
+      await db.delete(moduleVersions).where(inArray(moduleVersions.id, [versionA.id, versionB.id]));
+      await db.delete(modules).where(inArray(modules.id, [modA.id, modB.id]));
+      await db.delete(courses).where(eq(courses.id, course.id));
+      await db.delete(users).where(eq(users.id, user.id));
+    }
+  });
+
+  it("renders a completed enrollment as completed/100% even with zero module_progress rows (enrollment.status is checked before the zero-progress short-circuit)", async () => {
+    const email = `persisted-completed-noprogress-${randomUUID()}@example.com`;
+    const [user] = await db.insert(users).values({ email, displayName: "Persisted Completed No Progress Test" }).returning();
+    const [course] = await db
+      .insert(courses)
+      .values({ code: `PERSISTED-COMPLETED-${randomUUID()}`, title: "Persisted Completed No Progress Test" })
+      .returning();
+    const [mod] = await db.insert(modules).values({ courseId: course.id, moduleType: "scorm", title: "M1" }).returning();
+    const [version] = await db.insert(moduleVersions).values({ moduleId: mod.id, versionNumber: 1, status: "published" }).returning();
+    await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, mod.id));
+    // enrollment marked completed (e.g. by a backfill), but with no
+    // module_progress rows at all - the fragile ordering this fix addresses.
+    const [enrollment] = await db
+      .insert(enrollments)
+      .values({ userId: user.id, courseId: course.id, status: "completed" })
+      .returning();
+
+    try {
+      const result = await getCourseProgressForLearner(course.id, user.id);
+      expect(result).toEqual({ status: "completed", progress: 100 });
+    } finally {
       await db.delete(enrollments).where(eq(enrollments.id, enrollment.id));
       await db.update(modules).set({ currentVersionId: null }).where(eq(modules.id, mod.id));
       await db.delete(moduleVersions).where(eq(moduleVersions.id, version.id));
