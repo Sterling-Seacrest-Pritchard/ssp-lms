@@ -17,7 +17,7 @@ const VIDEO_FINISHED_STATUSES = new Set(["completed"]);
  * Type alone is NOT sufficient for video - see
  * `getTrackedModuleVersionIds`, which is what callers should use.
  */
-const TRACKED_MODULE_TYPES = new Set(["scorm", "video"]);
+const TRACKED_MODULE_TYPES = new Set(["scorm", "video", "quiz"]);
 
 export interface CourseProgress {
   status: "not-started" | "in-progress" | "completed";

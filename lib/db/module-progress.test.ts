@@ -118,4 +118,45 @@ describe("recordModuleCompletion", () => {
       await db.delete(users).where(eq(users.id, user.id));
     }
   });
+
+  it("marks a quiz module completed and rolls the enrollment up when the attempt's status is 'completed'", async () => {
+    const [user] = await db
+      .insert(users)
+      .values({ email: `quiz-progress-${randomUUID()}@example.com`, displayName: "Quiz Progress Test" })
+      .returning();
+    const [course] = await db.insert(courses).values({ code: `QUIZ-PROGRESS-${randomUUID()}`, title: "x" }).returning();
+    const [mod] = await db.insert(modules).values({ courseId: course.id, moduleType: "quiz", title: "x" }).returning();
+    const [version] = await db
+      .insert(moduleVersions)
+      .values({ moduleId: mod.id, versionNumber: 1, status: "published" })
+      .returning();
+    await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, mod.id));
+    const [enrollment] = await db.insert(enrollments).values({ userId: user.id, courseId: course.id }).returning();
+    const [attempt] = await db
+      .insert(moduleAttempts)
+      .values({ moduleVersionId: version.id, userId: user.id, attemptNumber: 1, status: "completed" })
+      .returning();
+
+    try {
+      await recordModuleCompletion({ userId: user.id, moduleVersionId: version.id });
+
+      const [progress] = await db
+        .select()
+        .from(moduleProgress)
+        .where(and(eq(moduleProgress.enrollmentId, enrollment.id), eq(moduleProgress.moduleId, mod.id)));
+      expect(progress.status).toBe("completed");
+
+      const [updatedEnrollment] = await db.select().from(enrollments).where(eq(enrollments.id, enrollment.id));
+      expect(updatedEnrollment.status).toBe("completed");
+    } finally {
+      await db.delete(moduleProgress).where(eq(moduleProgress.enrollmentId, enrollment.id));
+      await db.delete(moduleAttempts).where(eq(moduleAttempts.id, attempt.id));
+      await db.delete(enrollments).where(eq(enrollments.id, enrollment.id));
+      await db.update(modules).set({ currentVersionId: null }).where(eq(modules.id, mod.id));
+      await db.delete(moduleVersions).where(eq(moduleVersions.id, version.id));
+      await db.delete(modules).where(eq(modules.id, mod.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+      await db.delete(users).where(eq(users.id, user.id));
+    }
+  });
 });
