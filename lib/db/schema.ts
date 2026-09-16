@@ -52,6 +52,43 @@ export const courseAssignments = pgTable(
   (table) => [unique().on(table.courseId, table.userId)]
 );
 
+export const enrollments = pgTable(
+  "enrollments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    courseId: uuid("course_id").notNull().references(() => courses.id),
+    // Plain text, app-validated - not not_started/in_progress/completed/failed/expired
+    // and self/assigned/auto enforced by the DB. See Global Constraints.
+    status: text("status").notNull().default("not_started"),
+    source: text("source").notNull().default("assigned"),
+    enrolledAt: timestamp("enrolled_at", { withTimezone: true }).notNull().defaultNow(),
+    // Copied from courses.dueDate at enrollment time, not a live reference -
+    // a later change to the course's due date shouldn't retroactively move
+    // an already-enrolled learner's deadline.
+    dueAt: timestamp("due_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    // Reserved for v2 auto-reenroll; unused this pass (see spec Decisions).
+    cycleMonths: integer("cycle_months"),
+    validUntil: timestamp("valid_until", { withTimezone: true }),
+  },
+  (table) => [unique().on(table.userId, table.courseId)]
+);
+
+export const moduleProgress = pgTable(
+  "module_progress",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    enrollmentId: uuid("enrollment_id").notNull().references(() => enrollments.id),
+    moduleId: uuid("module_id").notNull().references(() => modules.id),
+    // not_attempted/incomplete/completed/passed/failed - see Global Constraints.
+    status: text("status").notNull().default("not_attempted"),
+    bestScore: integer("best_score"),
+    latestAttemptId: uuid("latest_attempt_id").references(() => moduleAttempts.id),
+  },
+  (table) => [unique().on(table.enrollmentId, table.moduleId)]
+);
+
 export const courses = pgTable("courses", {
   id: uuid("id").primaryKey().defaultRandom(),
   code: text("code").notNull().unique(),

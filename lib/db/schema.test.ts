@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db } from "./client";
-import { courses, modules, moduleVersions, departments } from "./schema";
+import { courses, enrollments, moduleProgress, modules, moduleVersions, departments, users } from "./schema";
 
 describe("minimal SCORM schema", () => {
   const courseCode = `TEST-${randomUUID()}`;
@@ -93,5 +93,76 @@ describe("courses.department_id backfill matching (0004 migration logic)", () =>
     expect(byDept("  HR  ")?.department_id).toBe(hr.id);
     expect(byDept("Not A Real Department")?.department_id).toBeNull();
     expect(rows.rows.find((r) => r.department === null)?.department_id).toBeNull();
+  });
+});
+
+describe("enrollments", () => {
+  it("enforces one enrollment per (user, course) pair", async () => {
+    const [user] = await db
+      .insert(users)
+      .values({ email: `enroll-test-${randomUUID()}@example.com`, displayName: "Enroll Test" })
+      .returning();
+    const [course] = await db
+      .insert(courses)
+      .values({ code: `ENROLL-${randomUUID()}`, title: "Enroll Test Course" })
+      .returning();
+    try {
+      await db.insert(enrollments).values({ userId: user.id, courseId: course.id });
+      await expect(db.insert(enrollments).values({ userId: user.id, courseId: course.id })).rejects.toThrow();
+    } finally {
+      await db.delete(enrollments).where(eq(enrollments.userId, user.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+      await db.delete(users).where(eq(users.id, user.id));
+    }
+  });
+
+  it("defaults status to not_started and source to assigned", async () => {
+    const [user] = await db
+      .insert(users)
+      .values({ email: `enroll-default-${randomUUID()}@example.com`, displayName: "Enroll Default" })
+      .returning();
+    const [course] = await db
+      .insert(courses)
+      .values({ code: `ENROLL-DEFAULT-${randomUUID()}`, title: "Enroll Default Course" })
+      .returning();
+    try {
+      const [row] = await db.insert(enrollments).values({ userId: user.id, courseId: course.id }).returning();
+      expect(row.status).toBe("not_started");
+      expect(row.source).toBe("assigned");
+    } finally {
+      await db.delete(enrollments).where(eq(enrollments.userId, user.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+      await db.delete(users).where(eq(users.id, user.id));
+    }
+  });
+});
+
+describe("moduleProgress", () => {
+  it("enforces one progress row per (enrollment, module) pair", async () => {
+    const [user] = await db
+      .insert(users)
+      .values({ email: `progress-test-${randomUUID()}@example.com`, displayName: "Progress Test" })
+      .returning();
+    const [course] = await db
+      .insert(courses)
+      .values({ code: `PROGRESS-${randomUUID()}`, title: "Progress Test Course" })
+      .returning();
+    const [mod] = await db
+      .insert(modules)
+      .values({ courseId: course.id, moduleType: "scorm", title: "Module 1" })
+      .returning();
+    const [enrollment] = await db.insert(enrollments).values({ userId: user.id, courseId: course.id }).returning();
+    try {
+      await db.insert(moduleProgress).values({ enrollmentId: enrollment.id, moduleId: mod.id });
+      await expect(
+        db.insert(moduleProgress).values({ enrollmentId: enrollment.id, moduleId: mod.id })
+      ).rejects.toThrow();
+    } finally {
+      await db.delete(moduleProgress).where(eq(moduleProgress.enrollmentId, enrollment.id));
+      await db.delete(enrollments).where(eq(enrollments.id, enrollment.id));
+      await db.delete(modules).where(eq(modules.id, mod.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+      await db.delete(users).where(eq(users.id, user.id));
+    }
   });
 });
