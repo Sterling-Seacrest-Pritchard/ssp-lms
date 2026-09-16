@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { POST } from "./route";
 import { db } from "@/lib/db/client";
-import { courses, modules, moduleVersions, moduleAttempts, users } from "@/lib/db/schema";
+import { courses, modules, moduleVersions, moduleAttempts, enrollments, users } from "@/lib/db/schema";
 
 const { SESSION_USER_EMAIL } = vi.hoisted(() => ({
   SESSION_USER_EMAIL: `video-attempts-session-user-${require("node:crypto").randomUUID()}@example.com`,
@@ -22,6 +22,7 @@ describe("POST /api/video/attempts", () => {
   afterEach(async () => {
     if (versionId) await db.delete(moduleAttempts).where(eq(moduleAttempts.moduleVersionId, versionId));
     if (courseId) {
+      await db.delete(enrollments).where(eq(enrollments.courseId, courseId));
       const mods = await db.select().from(modules).where(eq(modules.courseId, courseId));
       for (const m of mods) {
         await db.update(modules).set({ currentVersionId: null }).where(eq(modules.id, m.id));
@@ -34,7 +35,7 @@ describe("POST /api/video/attempts", () => {
     courseId = versionId = sessionUserId = undefined;
   });
 
-  it("creates an attempt using the SESSION user id, ignoring any userId in the body", async () => {
+  async function seed(options: { enroll?: boolean } = { enroll: true }) {
     const [sessionUser] = await db
       .insert(users)
       .values({ email: SESSION_USER_EMAIL, displayName: "Session User" })
@@ -45,10 +46,18 @@ describe("POST /api/video/attempts", () => {
     const [mod] = await db.insert(modules).values({ courseId: course.id, moduleType: "video", title: "x" }).returning();
     const [version] = await db.insert(moduleVersions).values({ moduleId: mod.id, versionNumber: 1, status: "published", publishedAt: new Date() }).returning();
     versionId = version.id;
+    if (options.enroll !== false) {
+      await db.insert(enrollments).values({ userId: sessionUser.id, courseId: course.id });
+    }
+    return version.id;
+  }
+
+  it("creates an attempt using the SESSION user id, ignoring any userId in the body", async () => {
+    const moduleVersionId = await seed();
 
     const request = new NextRequest("http://localhost/api/video/attempts", {
       method: "POST",
-      body: JSON.stringify({ moduleVersionId: version.id, userId: "attacker@example.com" }),
+      body: JSON.stringify({ moduleVersionId, userId: "attacker@example.com" }),
     });
     const response = await POST(request);
     expect(response.status).toBe(200);
@@ -56,6 +65,21 @@ describe("POST /api/video/attempts", () => {
 
     const [attempt] = await db.select().from(moduleAttempts).where(eq(moduleAttempts.id, body.attemptId));
     expect(attempt.userId).toBe(sessionUserId);
+  });
+
+  it("404s when the session user is not enrolled in the module's course", async () => {
+    const moduleVersionId = await seed({ enroll: false });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/video/attempts", {
+        method: "POST",
+        body: JSON.stringify({ moduleVersionId }),
+      })
+    );
+    expect(response.status).toBe(404);
+
+    const rows = await db.select().from(moduleAttempts).where(eq(moduleAttempts.moduleVersionId, moduleVersionId));
+    expect(rows).toHaveLength(0);
   });
 
   it("rejects when there is no session", async () => {

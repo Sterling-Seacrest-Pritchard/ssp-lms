@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { POST } from "./route";
 import { db } from "@/lib/db/client";
-import { courses, modules, moduleVersions, moduleAttempts, users } from "@/lib/db/schema";
+import { courses, modules, moduleVersions, moduleAttempts, enrollments, users } from "@/lib/db/schema";
 
 const { SESSION_USER_EMAIL } = vi.hoisted(() => ({
   SESSION_USER_EMAIL: `scorm-attempts-session-user-${require("node:crypto").randomUUID()}@example.com`,
@@ -22,6 +22,7 @@ describe("POST /api/scorm/attempts", () => {
   afterEach(async () => {
     if (versionId) await db.delete(moduleAttempts).where(eq(moduleAttempts.moduleVersionId, versionId));
     if (courseId) {
+      await db.delete(enrollments).where(eq(enrollments.courseId, courseId));
       const mods = await db.select().from(modules).where(eq(modules.courseId, courseId));
       for (const m of mods) {
         await db.update(modules).set({ currentVersionId: null }).where(eq(modules.id, m.id));
@@ -34,7 +35,7 @@ describe("POST /api/scorm/attempts", () => {
     courseId = versionId = sessionUserId = undefined;
   });
 
-  async function seed() {
+  async function seed(options: { enroll?: boolean } = { enroll: true }) {
     const [sessionUser] = await db
       .insert(users)
       .values({ email: SESSION_USER_EMAIL, displayName: "Session User" })
@@ -51,6 +52,9 @@ describe("POST /api/scorm/attempts", () => {
       .values({ moduleId: courseModule.id, versionNumber: 1, status: "published" })
       .returning();
     versionId = version.id;
+    if (options.enroll !== false) {
+      await db.insert(enrollments).values({ userId: sessionUser.id, courseId: course.id });
+    }
     return version.id;
   }
 
@@ -93,6 +97,37 @@ describe("POST /api/scorm/attempts", () => {
 
     const [attempt] = await db.select().from(moduleAttempts).where(eq(moduleAttempts.id, body.attemptId));
     expect(attempt.userId).toBe(sessionUserId);
+  });
+
+  it("404s when the session user is not enrolled in the module's course", async () => {
+    const moduleVersionId = await seed({ enroll: false });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/scorm/attempts", {
+        method: "POST",
+        body: JSON.stringify({ moduleVersionId }),
+      })
+    );
+    expect(response.status).toBe(404);
+
+    const rows = await db.select().from(moduleAttempts).where(eq(moduleAttempts.moduleVersionId, moduleVersionId));
+    expect(rows).toHaveLength(0);
+  });
+
+  it("404s for a moduleVersionId that doesn't exist (same status as not-enrolled)", async () => {
+    const [sessionUser] = await db
+      .insert(users)
+      .values({ email: SESSION_USER_EMAIL, displayName: "Session User" })
+      .returning();
+    sessionUserId = sessionUser.id;
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/scorm/attempts", {
+        method: "POST",
+        body: JSON.stringify({ moduleVersionId: randomUUID() }),
+      })
+    );
+    expect(response.status).toBe(404);
   });
 
   it("rejects when there is no session", async () => {

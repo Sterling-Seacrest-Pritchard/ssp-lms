@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
-import { db } from "@/lib/db/client";
-import { moduleAttempts } from "@/lib/db/schema";
-import { badRequest, isUuid, serverError } from "@/lib/api/errors";
+import { badRequest, isUuid, notFound, serverError } from "@/lib/api/errors";
 import { auth } from "@/auth";
 import { getUserIdByEmail } from "@/lib/db/users";
+import { getModuleVersionCourseId } from "@/lib/db/modules";
+import { getEnrollmentId } from "@/lib/db/enrollments";
+import { createModuleAttempt } from "@/lib/db/module-attempts";
+import { isAdminRole } from "@/lib/roles";
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,26 +40,19 @@ export async function POST(request: NextRequest) {
       return badRequest("moduleVersionId must be a UUID");
     }
 
-    // Attempt numbers are PER USER: filtering on moduleVersionId alone would
-    // number User B's first attempt 2 just because User A already has one.
-    const previousAttempts = await db
-      .select()
-      .from(moduleAttempts)
-      .where(
-        and(
-          eq(moduleAttempts.moduleVersionId, moduleVersionId),
-          eq(moduleAttempts.userId, userId)
-        )
-      );
+    const courseId = await getModuleVersionCourseId(moduleVersionId);
+    if (!courseId) {
+      return notFound("Module version not found");
+    }
 
-    const [attempt] = await db
-      .insert(moduleAttempts)
-      .values({
-        moduleVersionId,
-        userId,
-        attemptNumber: previousAttempts.length + 1,
-      })
-      .returning();
+    if (!isAdminRole(session.user?.roles)) {
+      const enrollmentId = await getEnrollmentId(userId, courseId);
+      if (!enrollmentId) {
+        return notFound("Module version not found");
+      }
+    }
+
+    const attempt = await createModuleAttempt({ userId, moduleVersionId });
 
     return NextResponse.json({ attemptId: attempt.id, attemptNumber: attempt.attemptNumber });
   } catch (error) {
