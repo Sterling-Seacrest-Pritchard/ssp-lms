@@ -19,6 +19,7 @@ import {
   moduleVersions,
   scormAttemptState,
   scormModuleVersions,
+  users,
   videoAssets,
   videoAttemptState,
   videoModuleVersions,
@@ -185,7 +186,11 @@ describe("removeModule", () => {
 
   it("removes a module a learner has already started, deleting its attempt rows", async () => {
     const { id: courseId } = await createDraftCourse();
-    const userId = `remove-module-test-${randomUUID()}@example.com`;
+    const [testUser] = await db
+      .insert(users)
+      .values({ email: `remove-module-test-${randomUUID()}@example.com`, displayName: "Remove Module Test" })
+      .returning();
+    const userId = testUser.id;
     try {
       const { moduleVersionId } = await createTestVideoModule(courseId, "Started");
       const [mod] = await db.select().from(modules).where(eq(modules.courseId, courseId));
@@ -213,12 +218,17 @@ describe("removeModule", () => {
       ).toHaveLength(0);
     } finally {
       await db.delete(courses).where(eq(courses.id, courseId));
+      await db.delete(users).where(eq(users.id, userId));
     }
   });
 
   it("removes a video module a learner has already watched, deleting its video attempt state but leaving the reusable video asset intact", async () => {
     const { id: courseId } = await createDraftCourse();
-    const userId = `remove-video-module-test-${randomUUID()}@example.com`;
+    const [testUser] = await db
+      .insert(users)
+      .values({ email: `remove-video-module-test-${randomUUID()}@example.com`, displayName: "Remove Video Module Test" })
+      .returning();
+    const userId = testUser.id;
     let videoAssetIdToClean: string | undefined;
     try {
       // A real, ready video module (with a Mux asset) plus a real committed
@@ -264,6 +274,7 @@ describe("removeModule", () => {
         await db.delete(videoAssets).where(eq(videoAssets.id, videoAssetIdToClean));
       }
       await db.delete(courses).where(eq(courses.id, courseId));
+      await db.delete(users).where(eq(users.id, userId));
     }
   });
 
@@ -381,22 +392,30 @@ describe("deleteCourse", () => {
 
   it("deletes a module a learner has already started along with the course", async () => {
     const courseId = (await createDraftCourse()).id;
-    const userId = `delete-course-test-${randomUUID()}@example.com`;
+    const [testUser] = await db
+      .insert(users)
+      .values({ email: `delete-course-test-${randomUUID()}@example.com`, displayName: "Delete Course Test" })
+      .returning();
+    const userId = testUser.id;
     const { moduleVersionId } = await createTestVideoModule(courseId, "Started");
     const [attempt] = await db
       .insert(moduleAttempts)
       .values({ moduleVersionId, userId, attemptNumber: 1 })
       .returning();
 
-    // Same FK-ordering hazard removeModule already handles (attempt rows ->
-    // module_versions -> modules -> course); deleteCourse must not regress it
-    // by, say, deleting the course row before its modules are gone.
-    await deleteCourse(courseId);
+    try {
+      // Same FK-ordering hazard removeModule already handles (attempt rows ->
+      // module_versions -> modules -> course); deleteCourse must not regress it
+      // by, say, deleting the course row before its modules are gone.
+      await deleteCourse(courseId);
 
-    expect(await db.select().from(courses).where(eq(courses.id, courseId))).toHaveLength(0);
-    expect(
-      await db.select().from(moduleAttempts).where(eq(moduleAttempts.id, attempt.id))
-    ).toHaveLength(0);
+      expect(await db.select().from(courses).where(eq(courses.id, courseId))).toHaveLength(0);
+      expect(
+        await db.select().from(moduleAttempts).where(eq(moduleAttempts.id, attempt.id))
+      ).toHaveLength(0);
+    } finally {
+      await db.delete(users).where(eq(users.id, userId));
+    }
   });
 
   it("does nothing for a non-UUID or nonexistent course id", async () => {
