@@ -27,17 +27,26 @@ export async function recordModuleCompletion(params: {
   moduleVersionId: string;
 }): Promise<void> {
   const userId = await getUserIdByEmail(params.userEmail);
-  if (!userId) return;
+  if (!userId) {
+    console.error(`recordModuleCompletion: no matching users row for email ${params.userEmail}`);
+    return;
+  }
 
   const [moduleRow] = await db
     .select({ moduleId: modules.id, courseId: modules.courseId, moduleType: modules.moduleType })
     .from(moduleVersions)
     .innerJoin(modules, eq(modules.id, moduleVersions.moduleId))
     .where(eq(moduleVersions.id, params.moduleVersionId));
-  if (!moduleRow) return;
+  if (!moduleRow) {
+    console.error(`recordModuleCompletion: no matching module for moduleVersionId ${params.moduleVersionId}`);
+    return;
+  }
 
   const enrollmentId = await getEnrollmentId(userId, moduleRow.courseId);
-  if (!enrollmentId) return;
+  if (!enrollmentId) {
+    console.log(`recordModuleCompletion: no enrollment for userId ${userId}, courseId ${moduleRow.courseId} - skipping (likely SCORM test tool)`);
+    return;
+  }
 
   const finished = await isModuleFinished(moduleRow.moduleType, params.moduleVersionId, params.userEmail);
 

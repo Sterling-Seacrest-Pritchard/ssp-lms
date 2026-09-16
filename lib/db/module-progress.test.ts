@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { recordModuleCompletion } from "./module-progress";
@@ -101,11 +101,14 @@ describe("recordModuleCompletion", () => {
     const [attempt] = await db.insert(moduleAttempts).values({ moduleVersionId: version.id, userId: user.email, attemptNumber: 1 }).returning();
     await db.insert(scormAttemptState).values({ moduleAttemptId: attempt.id, lessonStatus: "completed", rawCmi: {} });
 
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       await expect(recordModuleCompletion({ userEmail: user.email, moduleVersionId: version.id })).resolves.not.toThrow();
       const progressRows = await db.select().from(moduleProgress);
       expect(progressRows.find((p) => p.moduleId === mod.id)).toBeUndefined();
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("recordModuleCompletion: no enrollment"));
     } finally {
+      logSpy.mockRestore();
       await db.delete(scormAttemptState).where(eq(scormAttemptState.moduleAttemptId, attempt.id));
       await db.delete(moduleAttempts).where(eq(moduleAttempts.id, attempt.id));
       await db.update(modules).set({ currentVersionId: null }).where(eq(modules.id, mod.id));
