@@ -7,9 +7,11 @@ export interface ScormLaunchInfo {
   launchUrl: string;
   gcsPrefix: string;
   scormVersion: string;
+  courseId: string;
 }
 
 interface ScormLaunchInfoRow extends ScormLaunchInfo {
+  courseId: string;
   courseStatus: string;
 }
 
@@ -26,7 +28,7 @@ export async function getScormLaunchInfoForAdmin(
 ): Promise<ScormLaunchInfo | null> {
   const row = await loadLaunchInfoRow(moduleVersionId);
   if (!row) return null;
-  return { launchUrl: row.launchUrl, gcsPrefix: row.gcsPrefix, scormVersion: row.scormVersion };
+  return { launchUrl: row.launchUrl, gcsPrefix: row.gcsPrefix, scormVersion: row.scormVersion, courseId: row.courseId };
 }
 
 /**
@@ -38,13 +40,18 @@ export async function getScormLaunchInfoForAdmin(
  * learner holding (or enumerating) an id belonging to a DRAFT course's module
  * could launch that content - and create real attempt rows against it -
  * straight past the detail page's gate.
+ *
+ * Always returns the module's real `courseId` so callers can check
+ * enrollment against it - never trust a courseId a caller already had (e.g.
+ * from the URL) without confirming this module actually belongs to it. A
+ * learner enrolled in course A could otherwise pass A's id (satisfying an
+ * enrollment check keyed on that id) but supply a moduleVersionId belonging
+ * to course B and still get B's real launch info.
  */
-export async function getScormLaunchInfo(
-  moduleVersionId: string
-): Promise<ScormLaunchInfo | null> {
+export async function getScormLaunchInfo(moduleVersionId: string): Promise<ScormLaunchInfo | null> {
   const row = await loadLaunchInfoRow(moduleVersionId);
   if (!row || row.courseStatus !== "published") return null;
-  return { launchUrl: row.launchUrl, gcsPrefix: row.gcsPrefix, scormVersion: row.scormVersion };
+  return { launchUrl: row.launchUrl, gcsPrefix: row.gcsPrefix, scormVersion: row.scormVersion, courseId: row.courseId };
 }
 
 async function loadLaunchInfoRow(moduleVersionId: string): Promise<ScormLaunchInfoRow | null> {
@@ -55,6 +62,7 @@ async function loadLaunchInfoRow(moduleVersionId: string): Promise<ScormLaunchIn
       launchUrl: scormModuleVersions.launchUrl,
       gcsPrefix: scormModuleVersions.gcsPrefix,
       scormVersion: scormModuleVersions.scormVersion,
+      courseId: courses.id,
       courseStatus: courses.status,
     })
     .from(scormModuleVersions)

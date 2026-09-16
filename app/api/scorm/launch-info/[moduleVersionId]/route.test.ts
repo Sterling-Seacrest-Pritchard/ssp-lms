@@ -1,9 +1,17 @@
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, afterAll, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { GET } from "./route";
 import { db } from "@/lib/db/client";
 import { courses, modules, moduleVersions, scormModuleVersions } from "@/lib/db/schema";
+
+// This route now requires an enrollment for non-admins; mocked as an admin
+// here since this test is about launch-info resolution, not enrollment -
+// enrollment/authorization is covered by lib/db/enrollments.test.ts and the
+// learner page's own tests.
+vi.mock("@/auth", () => ({
+  auth: vi.fn().mockResolvedValue({ user: { email: "admin@example.com", roles: ["OrgAdmin"] } }),
+}));
 
 describe("GET /api/scorm/launch-info/[moduleVersionId]", () => {
   const courseCode = `LAUNCH-TEST-${randomUUID()}`;

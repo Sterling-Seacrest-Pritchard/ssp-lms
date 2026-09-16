@@ -33,17 +33,20 @@ export default async function VideoPage(props: PageProps<"/courses/[id]/video/[m
     if (!userId) {
       notFound();
     }
-    if (!isAdminRole(session?.user?.roles)) {
-      const enrollmentId = await getEnrollmentId(userId, id);
-      if (!enrollmentId) {
-        notFound();
-      }
-    }
 
     try {
       const info = await getVideoLaunchInfo(moduleId);
-      if (!info) {
+      // Check enrollment against the module's OWN resolved courseId, never
+      // the URL's - the URL's course id and moduleId are both
+      // caller-supplied and could belong to different courses entirely.
+      if (!info || info.courseId !== id) {
         notFound();
+      }
+      if (!isAdminRole(session?.user?.roles)) {
+        const enrollmentId = await getEnrollmentId(userId, info.courseId);
+        if (!enrollmentId) {
+          notFound();
+        }
       }
 
       const status = await getLatestVideoStatus(moduleId, userId);

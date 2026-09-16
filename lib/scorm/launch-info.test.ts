@@ -29,6 +29,7 @@ async function seedScormModule(status: string) {
 
   return {
     moduleVersionId: version.id,
+    courseId: course.id,
     async cleanup() {
       await db
         .delete(scormModuleVersions)
@@ -49,6 +50,7 @@ describe("getScormLaunchInfo", () => {
         launchUrl: "index.html",
         gcsPrefix: "launch-info-prefix",
         scormVersion: "1.2",
+        courseId: seeded.courseId,
       });
     } finally {
       await seeded.cleanup();

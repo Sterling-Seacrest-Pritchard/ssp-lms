@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getScormLaunchInfo } from "@/lib/scorm/launch-info";
+import { getEnrollmentId } from "@/lib/db/enrollments";
+import { getUserIdByEmail } from "@/lib/db/users";
+import { isAdminRole } from "@/lib/roles";
 import { isUuid, notFound, serverError } from "@/lib/api/errors";
+import { auth } from "@/auth";
 
 export async function GET(
   _request: Request,
@@ -20,6 +24,20 @@ export async function GET(
     const info = await getScormLaunchInfo(moduleVersionId);
     if (!info) {
       return notFound("Module version not found");
+    }
+
+    // This route had no enrollment check at all before - it only gated on
+    // the parent course being published, which any signed-in learner
+    // satisfies for any published course. Same check the learner-facing
+    // page applies.
+    const session = await auth();
+    if (!isAdminRole(session?.user?.roles)) {
+      const userEmail = session?.user?.email;
+      const userId = userEmail ? await getUserIdByEmail(userEmail) : null;
+      const enrollmentId = userId ? await getEnrollmentId(userId, info.courseId) : null;
+      if (!enrollmentId) {
+        return notFound("Module version not found");
+      }
     }
 
     return NextResponse.json(info);

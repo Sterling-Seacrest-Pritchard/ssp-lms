@@ -26,18 +26,21 @@ export default async function LearnerScormPage(
   if (!userId) {
     notFound();
   }
-  if (!isAdminRole(session.user?.roles)) {
-    const enrollmentId = await getEnrollmentId(userId, courseId);
-    if (!enrollmentId) {
-      notFound();
-    }
-  }
 
   let info, lessonStatus;
   try {
     info = await getScormLaunchInfo(moduleId);
-    if (!info) {
+    // Check enrollment against the module's OWN resolved courseId, never the
+    // URL's - the URL's courseId and moduleId are both caller-supplied and
+    // could belong to different courses entirely.
+    if (!info || info.courseId !== courseId) {
       notFound();
+    }
+    if (!isAdminRole(session.user?.roles)) {
+      const enrollmentId = await getEnrollmentId(userId, info.courseId);
+      if (!enrollmentId) {
+        notFound();
+      }
     }
 
     // A SCORM SCO's own runtime typically refuses to re-initialize once a prior

@@ -6,9 +6,11 @@ import { isUuid } from "@/lib/api/errors";
 export interface VideoLaunchInfo {
   muxPlaybackId: string;
   durationSeconds: number;
+  courseId: string;
 }
 
 interface VideoLaunchInfoRow extends VideoLaunchInfo {
+  courseId: string;
   courseStatus: string;
   videoStatus: string;
 }
@@ -24,7 +26,7 @@ export async function getVideoLaunchInfoForAdmin(
 ): Promise<VideoLaunchInfo | null> {
   const row = await loadLaunchInfoRow(moduleVersionId);
   if (!row) return null;
-  return { muxPlaybackId: row.muxPlaybackId, durationSeconds: row.durationSeconds };
+  return { muxPlaybackId: row.muxPlaybackId, durationSeconds: row.durationSeconds, courseId: row.courseId };
 }
 
 /**
@@ -32,13 +34,20 @@ export async function getVideoLaunchInfoForAdmin(
  * Returns null unless the parent course is published AND the asset is
  * ready - an unfinished upload is not launchable even on a published
  * course.
+ *
+ * Always returns the module's real `courseId` so callers can check
+ * enrollment against it - never trust a courseId a caller already had (e.g.
+ * from the URL) without confirming this module actually belongs to it. A
+ * learner enrolled in course A could otherwise pass A's id (satisfying an
+ * enrollment check keyed on that id) but supply a moduleVersionId belonging
+ * to course B and still get a real playback token for B.
  */
-export async function getVideoLaunchInfo(
-  moduleVersionId: string
-): Promise<VideoLaunchInfo | null> {
+export async function getVideoLaunchInfo(moduleVersionId: string): Promise<VideoLaunchInfo | null> {
   const row = await loadLaunchInfoRow(moduleVersionId);
-  if (!row || row.courseStatus !== "published" || row.videoStatus !== "ready") return null;
-  return { muxPlaybackId: row.muxPlaybackId, durationSeconds: row.durationSeconds };
+  if (!row || row.courseStatus !== "published" || row.videoStatus !== "ready") {
+    return null;
+  }
+  return { muxPlaybackId: row.muxPlaybackId, durationSeconds: row.durationSeconds, courseId: row.courseId };
 }
 
 /**
@@ -84,6 +93,7 @@ async function loadLaunchInfoRow(moduleVersionId: string): Promise<VideoLaunchIn
       muxPlaybackId: videoAssets.muxPlaybackId,
       durationSeconds: videoAssets.durationSeconds,
       videoStatus: videoAssets.status,
+      courseId: courses.id,
       courseStatus: courses.status,
     })
     .from(videoModuleVersions)
@@ -98,6 +108,7 @@ async function loadLaunchInfoRow(moduleVersionId: string): Promise<VideoLaunchIn
     muxPlaybackId: row.muxPlaybackId,
     durationSeconds: row.durationSeconds,
     videoStatus: row.videoStatus,
+    courseId: row.courseId,
     courseStatus: row.courseStatus,
   };
 }

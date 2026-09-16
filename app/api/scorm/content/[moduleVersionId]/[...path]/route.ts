@@ -3,6 +3,8 @@ import { isAdminRole } from "@/lib/roles";
 import { gcsStorage } from "@/lib/storage/gcs";
 import { mimeTypeForPath } from "@/lib/scorm/mime-types";
 import { getScormLaunchInfo, getScormLaunchInfoForAdmin } from "@/lib/scorm/launch-info";
+import { getEnrollmentId } from "@/lib/db/enrollments";
+import { getUserIdByEmail } from "@/lib/db/users";
 import { isUuid, notFound, serverError } from "@/lib/api/errors";
 
 /**
@@ -34,12 +36,25 @@ export async function GET(
     // Admins keep the un-gated lookup so the `/admin/scorm-test` harness can
     // still play a module before its course is published.
     const session = await auth();
-    const info = isAdminRole(session?.user?.roles)
+    const isAdmin = isAdminRole(session?.user?.roles);
+    const info = isAdmin
       ? await getScormLaunchInfoForAdmin(moduleVersionId)
       : await getScormLaunchInfo(moduleVersionId);
 
     if (!info) {
       return notFound("Module version not found");
+    }
+
+    // This proxy served the actual package bytes with no enrollment check at
+    // all before - only the parent course's publish status. Same check the
+    // learner-facing page and the launch-info route apply.
+    if (!isAdmin) {
+      const userEmail = session?.user?.email;
+      const userId = userEmail ? await getUserIdByEmail(userEmail) : null;
+      const enrollmentId = userId ? await getEnrollmentId(userId, info.courseId) : null;
+      if (!enrollmentId) {
+        return notFound("Module version not found");
+      }
     }
 
     const segments = path ?? [];

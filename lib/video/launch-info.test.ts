@@ -52,7 +52,7 @@ describe("video launch-info", () => {
   it("returns launch info for a ready video on a published course", async () => {
     const id = await seed("published", "ready");
     const info = await getVideoLaunchInfo(id);
-    expect(info).toEqual({ muxPlaybackId: "test-playback-id", durationSeconds: 120 });
+    expect(info).toEqual({ muxPlaybackId: "test-playback-id", durationSeconds: 120, courseId });
   });
 
   it("returns null for a draft course even if the video is ready", async () => {
@@ -70,7 +70,7 @@ describe("video launch-info", () => {
   it("getVideoLaunchInfoForAdmin ignores course status", async () => {
     const id = await seed("draft", "ready");
     const info = await getVideoLaunchInfoForAdmin(id);
-    expect(info).toEqual({ muxPlaybackId: "test-playback-id", durationSeconds: 120 });
+    expect(info).toEqual({ muxPlaybackId: "test-playback-id", durationSeconds: 120, courseId });
   });
 
   it("returns null for a non-UUID id", async () => {
