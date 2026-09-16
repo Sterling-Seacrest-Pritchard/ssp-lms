@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "./client";
 import { courseAssignments, courses, users } from "./schema";
+import { ensureEnrollment } from "./enrollments";
 import { isUuid } from "@/lib/api/errors";
 
 export interface UserWithStatus {
@@ -62,7 +63,10 @@ export async function assignCourse(
   assignedBy: string | null
 ): Promise<void> {
   try {
-    await db.insert(courseAssignments).values({ courseId, userId, assignedBy });
+    await db.transaction(async (tx) => {
+      await tx.insert(courseAssignments).values({ courseId, userId, assignedBy });
+      await ensureEnrollment(tx, { userId, courseId });
+    });
   } catch (error) {
     // Postgres unique_violation on the (course_id, user_id) constraint -
     // "already assigned" is a normal outcome here, not a server error. Drizzle
