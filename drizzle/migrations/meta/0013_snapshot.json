@@ -375,6 +375,277 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.quiz_attempt_answers": {
+      "name": "quiz_attempt_answers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "module_attempt_id": {
+          "name": "module_attempt_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "question_id": {
+          "name": "question_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "selected_choice_ids": {
+          "name": "selected_choice_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "is_correct": {
+          "name": "is_correct",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "quiz_attempt_answers_module_attempt_id_module_attempts_id_fk": {
+          "name": "quiz_attempt_answers_module_attempt_id_module_attempts_id_fk",
+          "tableFrom": "quiz_attempt_answers",
+          "columnsFrom": [
+            "module_attempt_id"
+          ],
+          "tableTo": "module_attempts",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "quiz_attempt_answers_question_id_quiz_questions_id_fk": {
+          "name": "quiz_attempt_answers_question_id_quiz_questions_id_fk",
+          "tableFrom": "quiz_attempt_answers",
+          "columnsFrom": [
+            "question_id"
+          ],
+          "tableTo": "quiz_questions",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "quiz_attempt_answers_module_attempt_id_question_id_unique": {
+          "name": "quiz_attempt_answers_module_attempt_id_question_id_unique",
+          "columns": [
+            "module_attempt_id",
+            "question_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.quiz_choices": {
+      "name": "quiz_choices",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "question_id": {
+          "name": "question_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "choice_text": {
+          "name": "choice_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_correct": {
+          "name": "is_correct",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "quiz_choices_question_id_quiz_questions_id_fk": {
+          "name": "quiz_choices_question_id_quiz_questions_id_fk",
+          "tableFrom": "quiz_choices",
+          "columnsFrom": [
+            "question_id"
+          ],
+          "tableTo": "quiz_questions",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.quiz_module_versions": {
+      "name": "quiz_module_versions",
+      "schema": "",
+      "columns": {
+        "module_version_id": {
+          "name": "module_version_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "passing_score_pct": {
+          "name": "passing_score_pct",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "time_limit_seconds": {
+          "name": "time_limit_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "max_attempts": {
+          "name": "max_attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "shuffle_questions": {
+          "name": "shuffle_questions",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "instructions": {
+          "name": "instructions",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "quiz_module_versions_module_version_id_module_versions_id_fk": {
+          "name": "quiz_module_versions_module_version_id_module_versions_id_fk",
+          "tableFrom": "quiz_module_versions",
+          "columnsFrom": [
+            "module_version_id"
+          ],
+          "tableTo": "module_versions",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.quiz_questions": {
+      "name": "quiz_questions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "quiz_module_version_id": {
+          "name": "quiz_module_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "question_type": {
+          "name": "question_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prompt": {
+          "name": "prompt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "points": {
+          "name": "points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "quiz_questions_quiz_module_version_id_quiz_module_versions_module_version_id_fk": {
+          "name": "quiz_questions_quiz_module_version_id_quiz_module_versions_module_version_id_fk",
+          "tableFrom": "quiz_questions",
+          "columnsFrom": [
+            "quiz_module_version_id"
+          ],
+          "tableTo": "quiz_module_versions",
+          "columnsTo": [
+            "module_version_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.scorm_attempt_state": {
       "name": "scorm_attempt_state",
       "schema": "",
