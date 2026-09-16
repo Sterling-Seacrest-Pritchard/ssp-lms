@@ -1,9 +1,15 @@
 import { describe, it, expect, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
-import { listRealCourses, getRealCourseDetail, listPublishedCourses, getCourseForBuilder } from "./queries";
+import {
+  listRealCourses,
+  getRealCourseDetail,
+  listPublishedCourses,
+  listEnrolledPublishedCourses,
+  getCourseForBuilder,
+} from "./queries";
 import { db } from "./client";
-import { courses, modules, moduleVersions, departments } from "./schema";
+import { courses, modules, moduleVersions, departments, enrollments, users } from "./schema";
 
 describe("listRealCourses", () => {
   const courseCode = `QUERIES-TEST-${randomUUID()}`;
@@ -259,6 +265,35 @@ describe("listPublishedCourses", () => {
     expect(found?.compliance).toBe(true);
     expect(found?.dueDate).toBeTruthy();
     expect(draftFound).toBeUndefined();
+  });
+});
+
+describe("listEnrolledPublishedCourses", () => {
+  it("only returns published courses the user is enrolled in", async () => {
+    const [user] = await db
+      .insert(users)
+      .values({ email: `enrolled-list-${randomUUID()}@example.com`, displayName: "Enrolled List Test" })
+      .returning();
+    const [enrolledCourse] = await db
+      .insert(courses)
+      .values({ code: `ENROLLED-${randomUUID()}`, title: "Enrolled Course", status: "published" })
+      .returning();
+    const [notEnrolledCourse] = await db
+      .insert(courses)
+      .values({ code: `NOTENROLLED-${randomUUID()}`, title: "Not Enrolled Course", status: "published" })
+      .returning();
+    await db.insert(enrollments).values({ userId: user.id, courseId: enrolledCourse.id });
+
+    try {
+      const result = await listEnrolledPublishedCourses(user.id);
+      expect(result.map((c) => c.id)).toEqual([enrolledCourse.id]);
+      expect(result.map((c) => c.id)).not.toContain(notEnrolledCourse.id);
+    } finally {
+      await db.delete(enrollments).where(eq(enrollments.userId, user.id));
+      await db.delete(courses).where(eq(courses.id, enrolledCourse.id));
+      await db.delete(courses).where(eq(courses.id, notEnrolledCourse.id));
+      await db.delete(users).where(eq(users.id, user.id));
+    }
   });
 });
 

@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { courses } from "@/lib/mock-data/courses";
-import { listPublishedCourses, type RealCourseSummary } from "@/lib/db/queries";
+import { listEnrolledPublishedCourses, type RealCourseSummary } from "@/lib/db/queries";
+import { getUserIdByEmail } from "@/lib/db/users";
 import { getCourseProgressForLearner } from "@/lib/scorm/course-progress";
 import { auth } from "@/auth";
 
@@ -53,12 +54,13 @@ export default async function CoursesPage() {
   let realCourses: RenderableCourse[] = [];
   try {
     const session = await auth();
-    const userId = session?.user?.email;
-    if (userId) {
-      const published: RealCourseSummary[] = await listPublishedCourses();
+    const userEmail = session?.user?.email;
+    const userId = userEmail ? await getUserIdByEmail(userEmail) : null;
+    if (userId && userEmail) {
+      const published: RealCourseSummary[] = await listEnrolledPublishedCourses(userId);
       realCourses = await Promise.all(
         published.map(async (course) => {
-          const { status, progress } = await getCourseProgressForLearner(course.id, userId);
+          const { status, progress } = await getCourseProgressForLearner(course.id, userEmail);
           return {
             id: course.id,
             title: course.title,

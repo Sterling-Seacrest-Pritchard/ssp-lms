@@ -1,6 +1,6 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "./client";
-import { courses, modules, departments } from "./schema";
+import { courses, modules, departments, enrollments } from "./schema";
 import { isUuid } from "@/lib/api/errors";
 
 export interface RealCourseSummary {
@@ -64,6 +64,27 @@ export async function listPublishedCourses(): Promise<RealCourseSummary[]> {
     .leftJoin(modules, eq(modules.courseId, courses.id))
     .leftJoin(departments, eq(departments.id, courses.departmentId))
     .where(eq(courses.status, "published"))
+    .groupBy(
+      courses.id,
+      courses.code,
+      courses.title,
+      departments.name,
+      courses.thumbnail,
+      courses.compliance,
+      courses.dueDate
+    )
+    .orderBy(courses.createdAt);
+  return rows.map(toSummary);
+}
+
+export async function listEnrolledPublishedCourses(userId: string): Promise<RealCourseSummary[]> {
+  const rows = await db
+    .select(courseSummaryColumns)
+    .from(enrollments)
+    .innerJoin(courses, eq(courses.id, enrollments.courseId))
+    .leftJoin(modules, eq(modules.courseId, courses.id))
+    .leftJoin(departments, eq(departments.id, courses.departmentId))
+    .where(and(eq(enrollments.userId, userId), eq(courses.status, "published")))
     .groupBy(
       courses.id,
       courses.code,
