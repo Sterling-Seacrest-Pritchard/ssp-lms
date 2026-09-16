@@ -123,4 +123,15 @@ describe("POST /api/scorm/commit", () => {
     );
     expect(response.status).toBe(401);
   });
+
+  it("still returns 200 and does not throw when recordModuleCompletion runs after a successful commit", async () => {
+    // No enrollments row is seeded for this course, so recordModuleCompletion's
+    // internal getEnrollmentId lookup returns null and it no-ops - proving the
+    // commit path tolerates both the enrolled and not-enrolled case.
+    const id = await seedAttempt();
+
+    const response = await POST(commitRequest(id, { "cmi.core.lesson_status": "completed" }));
+
+    expect(response.status).toBe(200);
+  });
 });

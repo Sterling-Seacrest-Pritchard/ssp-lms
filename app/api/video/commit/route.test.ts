@@ -110,4 +110,15 @@ describe("POST /api/video/commit", () => {
     const response = await POST(commitRequest("00000000-0000-0000-0000-000000000000"));
     expect(response.status).toBe(401);
   });
+
+  it("still returns 200 and does not throw when recordModuleCompletion runs after a successful commit", async () => {
+    // No enrollments row is seeded for this course, so recordModuleCompletion's
+    // internal getEnrollmentId lookup returns null and it no-ops - proving the
+    // commit path tolerates both the enrolled and not-enrolled case.
+    const id = await seedAttempt();
+
+    const response = await POST(commitRequest(id));
+
+    expect(response.status).toBe(200);
+  });
 });

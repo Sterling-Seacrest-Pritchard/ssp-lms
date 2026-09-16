@@ -4,6 +4,7 @@ import { db } from "@/lib/db/client";
 import { moduleAttempts, videoAttemptState } from "@/lib/db/schema";
 import { badRequest, isUuid, notFound, serverError } from "@/lib/api/errors";
 import { auth } from "@/auth";
+import { recordModuleCompletion } from "@/lib/db/module-progress";
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
     // bogus-but-UUID-shaped attemptId into a clean 404 instead of the 500 the
     // video_attempt_state -> module_attempts FK used to raise on insert.
     const [attempt] = await db
-      .select({ userId: moduleAttempts.userId })
+      .select({ userId: moduleAttempts.userId, moduleVersionId: moduleAttempts.moduleVersionId })
       .from(moduleAttempts)
       .where(eq(moduleAttempts.id, attemptId));
     if (!attempt || attempt.userId !== sessionUserId) {
@@ -65,6 +66,12 @@ export async function POST(request: NextRequest) {
       await db.insert(videoAttemptState).values({ moduleAttemptId: attemptId, ...values });
     } else {
       await db.update(videoAttemptState).set(values).where(eq(videoAttemptState.moduleAttemptId, attemptId));
+    }
+
+    try {
+      await recordModuleCompletion({ userEmail: sessionUserId, moduleVersionId: attempt.moduleVersionId });
+    } catch (error) {
+      console.error("recordModuleCompletion failed after a successful video commit", error);
     }
 
     return NextResponse.json({ ok: true });

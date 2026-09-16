@@ -4,6 +4,7 @@ import { db } from "@/lib/db/client";
 import { moduleAttempts, scormAttemptState } from "@/lib/db/schema";
 import { badRequest, isUuid, notFound, serverError } from "@/lib/api/errors";
 import { auth } from "@/auth";
+import { recordModuleCompletion } from "@/lib/db/module-progress";
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
     // would tell an attacker holding a guessed UUID that the attempt is real
     // and someone else's.
     const [attempt] = await db
-      .select({ userId: moduleAttempts.userId })
+      .select({ userId: moduleAttempts.userId, moduleVersionId: moduleAttempts.moduleVersionId })
       .from(moduleAttempts)
       .where(eq(moduleAttempts.id, attemptId));
     if (!attempt || attempt.userId !== sessionUserId) {
@@ -76,6 +77,12 @@ export async function POST(request: NextRequest) {
         .update(scormAttemptState)
         .set({ lessonStatus, lessonLocation, suspendData, rawCmi: cmi, lastCommitAt: new Date() })
         .where(eq(scormAttemptState.moduleAttemptId, attemptId));
+    }
+
+    try {
+      await recordModuleCompletion({ userEmail: sessionUserId, moduleVersionId: attempt.moduleVersionId });
+    } catch (error) {
+      console.error("recordModuleCompletion failed after a successful SCORM commit", error);
     }
 
     return NextResponse.json({ ok: true });
