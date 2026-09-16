@@ -35,7 +35,7 @@ async function seedScormModuleWithAttempt(lessonStatus: string) {
   const [enrollment] = await db.insert(enrollments).values({ userId: user.id, courseId: course.id }).returning();
   const [attempt] = await db
     .insert(moduleAttempts)
-    .values({ moduleVersionId: version.id, userId: user.email, attemptNumber: 1 })
+    .values({ moduleVersionId: version.id, userId: user.id, attemptNumber: 1 })
     .returning();
   await db.insert(scormAttemptState).values({ moduleAttemptId: attempt.id, lessonStatus, rawCmi: {} });
   return { user, course, mod, version, enrollment, attempt };
@@ -98,7 +98,7 @@ describe("recordModuleCompletion", () => {
     const [mod] = await db.insert(modules).values({ courseId: course.id, moduleType: "scorm", title: "Module 1" }).returning();
     const [version] = await db.insert(moduleVersions).values({ moduleId: mod.id, versionNumber: 1, status: "published" }).returning();
     await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, mod.id));
-    const [attempt] = await db.insert(moduleAttempts).values({ moduleVersionId: version.id, userId: user.email, attemptNumber: 1 }).returning();
+    const [attempt] = await db.insert(moduleAttempts).values({ moduleVersionId: version.id, userId: user.id, attemptNumber: 1 }).returning();
     await db.insert(scormAttemptState).values({ moduleAttemptId: attempt.id, lessonStatus: "completed", rawCmi: {} });
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});

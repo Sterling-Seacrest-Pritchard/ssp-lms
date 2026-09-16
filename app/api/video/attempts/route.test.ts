@@ -3,15 +3,20 @@ import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { POST } from "./route";
 import { db } from "@/lib/db/client";
-import { courses, modules, moduleVersions, moduleAttempts } from "@/lib/db/schema";
+import { courses, modules, moduleVersions, moduleAttempts, users } from "@/lib/db/schema";
+
+const { SESSION_USER_EMAIL } = vi.hoisted(() => ({
+  SESSION_USER_EMAIL: `video-attempts-session-user-${require("node:crypto").randomUUID()}@example.com`,
+}));
 
 vi.mock("@/auth", () => ({
-  auth: vi.fn().mockResolvedValue({ user: { email: "real-session-user@example.com" } }),
+  auth: vi.fn().mockResolvedValue({ user: { email: SESSION_USER_EMAIL } }),
 }));
 
 describe("POST /api/video/attempts", () => {
   let courseId: string | undefined;
   let versionId: string | undefined;
+  let sessionUserId: string | undefined;
 
   afterEach(async () => {
     if (versionId) await db.delete(moduleAttempts).where(eq(moduleAttempts.moduleVersionId, versionId));
@@ -24,10 +29,16 @@ describe("POST /api/video/attempts", () => {
       await db.delete(modules).where(eq(modules.courseId, courseId));
       await db.delete(courses).where(eq(courses.id, courseId));
     }
-    courseId = versionId = undefined;
+    if (sessionUserId) await db.delete(users).where(eq(users.id, sessionUserId));
+    courseId = versionId = sessionUserId = undefined;
   });
 
   it("creates an attempt using the SESSION user id, ignoring any userId in the body", async () => {
+    const [sessionUser] = await db
+      .insert(users)
+      .values({ email: SESSION_USER_EMAIL, displayName: "Session User" })
+      .returning();
+    sessionUserId = sessionUser.id;
     const [course] = await db.insert(courses).values({ code: `ATTEMPT-${Date.now()}`, title: "x" }).returning();
     courseId = course.id;
     const [mod] = await db.insert(modules).values({ courseId: course.id, moduleType: "video", title: "x" }).returning();
@@ -43,7 +54,7 @@ describe("POST /api/video/attempts", () => {
     const body = await response.json();
 
     const [attempt] = await db.select().from(moduleAttempts).where(eq(moduleAttempts.id, body.attemptId));
-    expect(attempt.userId).toBe("real-session-user@example.com");
+    expect(attempt.userId).toBe(sessionUserId);
   });
 
   it("rejects when there is no session", async () => {

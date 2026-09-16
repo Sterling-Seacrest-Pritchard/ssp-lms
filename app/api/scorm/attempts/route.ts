@@ -4,13 +4,18 @@ import { db } from "@/lib/db/client";
 import { moduleAttempts } from "@/lib/db/schema";
 import { badRequest, isUuid, serverError } from "@/lib/api/errors";
 import { auth } from "@/auth";
+import { getUserIdByEmail } from "@/lib/db/users";
 
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
-    const userId = session?.user?.email;
-    if (!userId) {
+    const userEmail = session?.user?.email;
+    if (!userEmail) {
       return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const userId = await getUserIdByEmail(userEmail);
+    if (!userId) {
+      return NextResponse.json({ error: "User record not found" }, { status: 404 });
     }
 
     let body: unknown;

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import { computeLiveCourseProgress, getCourseProgressForLearner } from "./course-progress";
@@ -52,7 +52,15 @@ async function markVideoReady(moduleVersionId: string) {
 
 describe("computeLiveCourseProgress", () => {
   const courseCode = `COURSE-PROGRESS-TEST-${randomUUID()}`;
-  const userId = "course-progress-test@example.com";
+  let userId: string;
+
+  beforeAll(async () => {
+    const [testUser] = await db
+      .insert(users)
+      .values({ email: `course-progress-test-${randomUUID()}@example.com`, displayName: "Course Progress Test User" })
+      .returning();
+    userId = testUser.id;
+  });
 
   afterAll(async () => {
     const [course] = await db.select().from(courses).where(eq(courses.code, courseCode));
@@ -89,6 +97,7 @@ describe("computeLiveCourseProgress", () => {
       }
       await db.delete(courses).where(eq(courses.id, course.id));
     }
+    await db.delete(users).where(eq(users.id, userId));
   });
 
   it("returns not-started with 0 progress when the learner has no attempts", async () => {

@@ -78,6 +78,13 @@
       "when": 1789565720912,
       "tag": "0011_module_attempts_user_id_uuid_add",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789568446415,
+      "tag": "0012_module_attempts_user_id_uuid_finish",
+      "breakpoints": true
     }
   ]
 }

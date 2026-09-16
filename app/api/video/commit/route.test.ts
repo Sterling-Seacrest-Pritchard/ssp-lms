@@ -1,19 +1,36 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from "vitest";
+import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { POST } from "./route";
 import { db } from "@/lib/db/client";
-import { moduleAttempts, videoAttemptState, courses, modules, moduleVersions } from "@/lib/db/schema";
+import { moduleAttempts, videoAttemptState, courses, modules, moduleVersions, users } from "@/lib/db/schema";
 
-const SESSION_USER = "commit-session-user@example.com";
+const { SESSION_USER } = vi.hoisted(() => ({
+  SESSION_USER: `video-commit-session-user-${require("node:crypto").randomUUID()}@example.com`,
+}));
 
 vi.mock("@/auth", () => ({
-  auth: vi.fn().mockResolvedValue({ user: { email: "commit-session-user@example.com" } }),
+  auth: vi.fn().mockResolvedValue({ user: { email: SESSION_USER } }),
 }));
 
 describe("POST /api/video/commit", () => {
+  let sessionUserId: string;
   let attemptId: string | undefined;
   let courseId: string | undefined;
+  let userIds: string[] = [];
+
+  beforeAll(async () => {
+    const [sessionUser] = await db
+      .insert(users)
+      .values({ email: SESSION_USER, displayName: "Session User" })
+      .returning();
+    sessionUserId = sessionUser.id;
+  });
+
+  afterAll(async () => {
+    await db.delete(users).where(eq(users.id, sessionUserId));
+  });
 
   afterEach(async () => {
     if (attemptId) {
@@ -29,10 +46,21 @@ describe("POST /api/video/commit", () => {
       await db.delete(modules).where(eq(modules.courseId, courseId));
       await db.delete(courses).where(eq(courses.id, courseId));
     }
+    for (const id of userIds) {
+      await db.delete(users).where(eq(users.id, id));
+    }
     attemptId = courseId = undefined;
+    userIds = [];
   });
 
-  async function seedAttempt(userId: string = SESSION_USER) {
+  async function getOrCreateUserId(email: string) {
+    const [user] = await db.insert(users).values({ email, displayName: email }).returning();
+    userIds.push(user.id);
+    return user.id;
+  }
+
+  async function seedAttempt(userEmail?: string) {
+    const userId = userEmail === undefined ? sessionUserId : await getOrCreateUserId(userEmail);
     const [course] = await db.insert(courses).values({ code: `COMMIT-${Date.now()}`, title: "x" }).returning();
     courseId = course.id;
     const [mod] = await db.insert(modules).values({ courseId: course.id, moduleType: "video", title: "x" }).returning();
@@ -85,7 +113,7 @@ describe("POST /api/video/commit", () => {
   });
 
   it("404s on an attempt owned by a different user, without writing to it", async () => {
-    const id = await seedAttempt("someone-else@example.com");
+    const id = await seedAttempt(`video-commit-someone-else-${randomUUID()}@example.com`);
 
     const response = await POST(commitRequest(id));
 

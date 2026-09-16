@@ -3,15 +3,20 @@ import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { POST } from "./route";
 import { db } from "@/lib/db/client";
-import { courses, modules, moduleVersions, moduleAttempts } from "@/lib/db/schema";
+import { courses, modules, moduleVersions, moduleAttempts, users } from "@/lib/db/schema";
+
+const { SESSION_USER_EMAIL } = vi.hoisted(() => ({
+  SESSION_USER_EMAIL: `scorm-attempts-session-user-${require("node:crypto").randomUUID()}@example.com`,
+}));
 
 vi.mock("@/auth", () => ({
-  auth: vi.fn().mockResolvedValue({ user: { email: "real-session-user@example.com" } }),
+  auth: vi.fn().mockResolvedValue({ user: { email: SESSION_USER_EMAIL } }),
 }));
 
 describe("POST /api/scorm/attempts", () => {
   let courseId: string | undefined;
   let versionId: string | undefined;
+  let sessionUserId: string | undefined;
 
   afterEach(async () => {
     if (versionId) await db.delete(moduleAttempts).where(eq(moduleAttempts.moduleVersionId, versionId));
@@ -24,10 +29,16 @@ describe("POST /api/scorm/attempts", () => {
       await db.delete(modules).where(eq(modules.courseId, courseId));
       await db.delete(courses).where(eq(courses.id, courseId));
     }
-    courseId = versionId = undefined;
+    if (sessionUserId) await db.delete(users).where(eq(users.id, sessionUserId));
+    courseId = versionId = sessionUserId = undefined;
   });
 
   async function seed() {
+    const [sessionUser] = await db
+      .insert(users)
+      .values({ email: SESSION_USER_EMAIL, displayName: "Session User" })
+      .returning();
+    sessionUserId = sessionUser.id;
     const [course] = await db.insert(courses).values({ code: `ATTEMPT-${Date.now()}`, title: "t" }).returning();
     courseId = course.id;
     const [courseModule] = await db
@@ -65,7 +76,7 @@ describe("POST /api/scorm/attempts", () => {
 
     const rows = await db.select().from(moduleAttempts).where(eq(moduleAttempts.moduleVersionId, moduleVersionId));
     expect(rows).toHaveLength(2);
-    expect(rows.every((r) => r.userId === "real-session-user@example.com")).toBe(true);
+    expect(rows.every((r) => r.userId === sessionUserId)).toBe(true);
   });
 
   it("ignores any userId supplied in the body, using the session's instead", async () => {
@@ -80,7 +91,7 @@ describe("POST /api/scorm/attempts", () => {
     const body = await response.json();
 
     const [attempt] = await db.select().from(moduleAttempts).where(eq(moduleAttempts.id, body.attemptId));
-    expect(attempt.userId).toBe("real-session-user@example.com");
+    expect(attempt.userId).toBe(sessionUserId);
   });
 
   it("rejects when there is no session", async () => {

@@ -1,13 +1,21 @@
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import { getLatestLessonStatus } from "./completion-status";
 import { db } from "@/lib/db/client";
-import { courses, modules, moduleVersions, moduleAttempts, scormAttemptState } from "@/lib/db/schema";
+import { courses, modules, moduleVersions, moduleAttempts, scormAttemptState, users } from "@/lib/db/schema";
 
 describe("getLatestLessonStatus", () => {
   const courseCode = `COMPLETION-STATUS-TEST-${randomUUID()}`;
-  const userId = "completion-status-test@example.com";
+  let userId: string;
+
+  beforeAll(async () => {
+    const [testUser] = await db
+      .insert(users)
+      .values({ email: `completion-status-test-${randomUUID()}@example.com`, displayName: "Completion Status Test User" })
+      .returning();
+    userId = testUser.id;
+  });
 
   afterAll(async () => {
     const [course] = await db.select().from(courses).where(eq(courses.code, courseCode));
@@ -40,6 +48,7 @@ describe("getLatestLessonStatus", () => {
       }
       await db.delete(courses).where(eq(courses.id, course.id));
     }
+    await db.delete(users).where(eq(users.id, userId));
   });
 
   it("returns null when no attempts exist for this module/user pair", async () => {

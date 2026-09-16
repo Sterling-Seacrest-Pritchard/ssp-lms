@@ -48,7 +48,7 @@ export async function recordModuleCompletion(params: {
     return;
   }
 
-  const finished = await isModuleFinished(moduleRow.moduleType, params.moduleVersionId, params.userEmail);
+  const finished = await isModuleFinished(moduleRow.moduleType, params.moduleVersionId, userId);
 
   const [existingProgress] = await db
     .select({ status: moduleProgress.status })

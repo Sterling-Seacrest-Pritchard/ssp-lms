@@ -5,13 +5,18 @@ import { moduleAttempts, scormAttemptState } from "@/lib/db/schema";
 import { badRequest, isUuid, notFound, serverError } from "@/lib/api/errors";
 import { auth } from "@/auth";
 import { recordModuleCompletion } from "@/lib/db/module-progress";
+import { getUserIdByEmail } from "@/lib/db/users";
 
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
-    const sessionUserId = session?.user?.email;
-    if (!sessionUserId) {
+    const userEmail = session?.user?.email;
+    if (!userEmail) {
       return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const sessionUserId = await getUserIdByEmail(userEmail);
+    if (!sessionUserId) {
+      return NextResponse.json({ error: "User record not found" }, { status: 404 });
     }
 
     let body: unknown;
@@ -80,7 +85,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      await recordModuleCompletion({ userEmail: sessionUserId, moduleVersionId: attempt.moduleVersionId });
+      await recordModuleCompletion({ userEmail, moduleVersionId: attempt.moduleVersionId });
     } catch (error) {
       console.error("recordModuleCompletion failed after a successful SCORM commit", error);
     }
