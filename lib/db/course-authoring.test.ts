@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import AdmZip from "adm-zip";
 import { eq, inArray } from "drizzle-orm";
@@ -26,6 +26,20 @@ import {
 import { uploadScormPackage } from "@/lib/scorm/extract-package";
 import { gcsStorage } from "@/lib/storage/gcs";
 
+// Every video_assets row created by the two helpers below, tracked here so a
+// single file-level afterAll can clean them up regardless of which test path
+// creates one - per-test cleanup blocks in this file were never deleting
+// these rows, which leaked real rows into production on every test run
+// (there is no separate test database; DATABASE_URL is the live Cloud SQL
+// instance). See lib/scorm/course-progress.test.ts for the same fix.
+const createdTestVideoAssetIds: string[] = [];
+
+afterAll(async () => {
+  if (createdTestVideoAssetIds.length > 0) {
+    await db.delete(videoAssets).where(inArray(videoAssets.id, createdTestVideoAssetIds));
+  }
+});
+
 /**
  * Test-only replacement for the removed `addVideoPlaceholderModule` (Task 2
  * of the video-hosting-mux plan superseded it with the real Mux
@@ -49,6 +63,7 @@ async function addVideoModuleForTest(courseId: string): Promise<{ moduleVersionI
       durationSeconds: 60,
     })
     .returning();
+  createdTestVideoAssetIds.push(asset.id);
   await db.insert(videoModuleVersions).values({ moduleVersionId: version.id, videoAssetId: asset.id });
   await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, mod.id));
   return { moduleVersionId: version.id, videoAssetId: asset.id };
@@ -64,6 +79,7 @@ async function createTestVideoModule(courseId: string, title: string): Promise<{
     .values({ moduleId: courseModule.id, versionNumber: 1, status: "published", publishedAt: new Date() })
     .returning();
   const [asset] = await db.insert(videoAssets).values({ title, status: "waiting" }).returning();
+  createdTestVideoAssetIds.push(asset.id);
   await db.insert(videoModuleVersions).values({ moduleVersionId: version.id, videoAssetId: asset.id });
   await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, courseModule.id));
   return { moduleVersionId: version.id, videoAssetId: asset.id };

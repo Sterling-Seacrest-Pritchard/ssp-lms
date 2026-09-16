@@ -80,6 +80,13 @@ export function VideosClient() {
 
     const putResponse = await fetch(createBody.uploadUrl, { method: "PUT", body: file });
     if (!putResponse.ok) {
+      // The file transfer itself never happened, so nothing was uploaded to
+      // Mux - the video_assets row created above would otherwise sit
+      // forever at status "waiting", never attached to any module, and
+      // clutter the Library. Safe to delete outright (fetch-and-forget:
+      // this failure path is already an error state, so a second failure
+      // here isn't worth surfacing separately).
+      fetch(`/api/admin/videos/${createBody.videoAssetId}`, { method: "DELETE" }).catch(() => {});
       setUploadError("Upload to Mux failed");
       setUploading(false);
       setUploadStatus(null);

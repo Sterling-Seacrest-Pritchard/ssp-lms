@@ -17,6 +17,19 @@ import {
   users,
 } from "@/lib/db/schema";
 
+// Tracked here so a single file-level afterAll can clean these up - this
+// file's own per-test cleanup blocks never deleted the video_assets row
+// markVideoReady creates, which leaked real rows into production on every
+// test run (there is no separate test database; DATABASE_URL is the live
+// Cloud SQL instance). See lib/db/course-authoring.test.ts for the same fix.
+const createdTestVideoAssetIds: string[] = [];
+
+afterAll(async () => {
+  if (createdTestVideoAssetIds.length > 0) {
+    await db.delete(videoAssets).where(inArray(videoAssets.id, createdTestVideoAssetIds));
+  }
+});
+
 /**
  * A video module is only tracked once its Mux asset is `ready`, so every
  * video module in these tests needs a real video_assets row linked to it -
@@ -33,6 +46,7 @@ async function markVideoReady(moduleVersionId: string) {
       durationSeconds: 60,
     })
     .returning();
+  createdTestVideoAssetIds.push(asset.id);
   await db.insert(videoModuleVersions).values({ moduleVersionId, videoAssetId: asset.id });
 }
 
