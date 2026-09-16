@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, Pencil, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,6 +75,12 @@ export function QuizEditorClient({
   const [adding, setAdding] = useState(false);
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editPrompt, setEditPrompt] = useState("");
+  const [editPoints, setEditPoints] = useState("1");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const [passingScorePct, setPassingScorePct] = useState("70");
   const [savingScore, setSavingScore] = useState(false);
@@ -184,6 +190,45 @@ export function QuizEditorClient({
     loadQuestions();
   }
 
+  function startEditQuestion(question: QuizQuestion) {
+    setEditingId(question.id);
+    setEditPrompt(question.prompt);
+    setEditPoints(String(question.points));
+    setEditError(null);
+  }
+
+  function cancelEditQuestion() {
+    setEditingId(null);
+    setEditError(null);
+  }
+
+  async function handleSaveQuestionEdit(questionId: string) {
+    setEditError(null);
+    if (!editPrompt.trim()) {
+      setEditError("Enter a question prompt");
+      return;
+    }
+    const pointsNum = Number(editPoints);
+    if (!Number.isFinite(pointsNum) || pointsNum <= 0) {
+      setEditError("Points must be a positive number");
+      return;
+    }
+    setEditSaving(true);
+    const response = await fetch(`/api/admin/quiz/${moduleVersionId}/questions/${questionId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ prompt: editPrompt, points: pointsNum }),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setEditError(body.error ?? "Could not save question");
+      setEditSaving(false);
+      return;
+    }
+    setEditSaving(false);
+    setEditingId(null);
+    loadQuestions();
+  }
+
   async function handleSavePassingScore(e: React.FormEvent) {
     e.preventDefault();
     setScoreError(null);
@@ -266,37 +311,99 @@ export function QuizEditorClient({
           ) : questions && questions.length === 0 ? (
             <p className="text-sm text-muted-foreground">No questions yet — add one below.</p>
           ) : (
-            questions?.map((question, i) => (
+            <>
+              <p className="text-xs text-muted-foreground">
+                Note: deleting and re-adding a question places it at the end of the list — it
+                won&apos;t keep its original position.
+              </p>
+              {questions?.map((question, i) => (
               <div key={question.id} className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2.5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">
-                      {i + 1}. {question.prompt}
+                {editingId === question.id ? (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor={`edit-prompt-${question.id}`}>Prompt</Label>
+                      <Input
+                        id={`edit-prompt-${question.id}`}
+                        value={editPrompt}
+                        onChange={(e) => setEditPrompt(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor={`edit-points-${question.id}`}>Points</Label>
+                      <Input
+                        id={`edit-points-${question.id}`}
+                        type="number"
+                        min={1}
+                        value={editPoints}
+                        onChange={(e) => setEditPoints(e.target.value)}
+                        className="w-32"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      To change answer choices, delete and re-add this question.
                     </p>
-                    <div className="mt-1 flex items-center gap-2">
-                      <Badge variant="outline" className="text-[10px] uppercase">
-                        {question.questionType.replace("_", " ")}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {question.points} point{question.points === 1 ? "" : "s"}
-                      </span>
+                    {editError && <p className="text-sm text-destructive">{editError}</p>}
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={editSaving}
+                        onClick={() => handleSaveQuestionEdit(question.id)}
+                      >
+                        {editSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                        Save
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={editSaving}
+                        onClick={cancelEditQuestion}
+                      >
+                        Cancel
+                      </Button>
                     </div>
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Delete question"
-                    disabled={deletingId === question.id}
-                    onClick={() => handleDeleteQuestion(question.id)}
-                  >
-                    {deletingId === question.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    )}
-                  </Button>
-                </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">
+                        {i + 1}. {question.prompt}
+                      </p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <Badge variant="outline" className="text-[10px] uppercase">
+                          {question.questionType.replace("_", " ")}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {question.points} point{question.points === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Edit question"
+                      onClick={() => startEditQuestion(question)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Delete question"
+                      disabled={deletingId === question.id}
+                      onClick={() => handleDeleteQuestion(question.id)}
+                    >
+                      {deletingId === question.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      )}
+                    </Button>
+                  </div>
+                )}
                 <ul className="flex flex-col gap-1 pl-4 text-sm">
                   {question.choices.map((choice) => (
                     <li
@@ -309,7 +416,8 @@ export function QuizEditorClient({
                   ))}
                 </ul>
               </div>
-            ))
+              ))}
+            </>
           )}
         </CardContent>
       </Card>
