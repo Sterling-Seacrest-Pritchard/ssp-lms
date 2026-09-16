@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { serverError } from "@/lib/api/errors";
 import { syncAssignedUsers } from "@/lib/entra/sync";
@@ -11,8 +12,14 @@ import { syncAssignedUsers } from "@/lib/entra/sync";
  * is unaffected and still works the same way.
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) {
+    console.error("Entra cron sync: CRON_SECRET is not set - refusing to run unauthenticated");
+    return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+  }
+  const expected = Buffer.from(`Bearer ${secret}`);
+  const got = Buffer.from(request.headers.get("authorization") ?? "");
+  if (got.length !== expected.length || !timingSafeEqual(got, expected)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

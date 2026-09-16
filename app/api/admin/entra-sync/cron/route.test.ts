@@ -33,6 +33,16 @@ describe("GET /api/admin/entra-sync/cron", () => {
     expect(response.status).toBe(401);
   });
 
+  it("fails closed with 500 when CRON_SECRET is unset, even if the request literally sends 'Bearer undefined'", async () => {
+    delete process.env.CRON_SECRET;
+    const { GET } = await import("./route");
+    const request = new NextRequest("https://example.com/api/admin/entra-sync/cron", {
+      headers: { authorization: "Bearer undefined" },
+    });
+    const response = await GET(request);
+    expect(response.status).toBe(500);
+  });
+
   it("runs the sync when the correct CRON_SECRET is presented", async () => {
     const { GET } = await import("./route");
     const request = new NextRequest("https://example.com/api/admin/entra-sync/cron", {
