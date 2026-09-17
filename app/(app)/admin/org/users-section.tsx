@@ -62,7 +62,9 @@ export function UsersSection() {
       setSyncing(false);
       return;
     }
-    setSyncResult(`${body.total} assigned in Entra — ${body.created} new, ${body.updated} updated`);
+    setSyncResult(
+      `${body.total} assigned in Entra — ${body.created} new, ${body.updated} updated, ${body.deactivated} deactivated`
+    );
     setSyncing(false);
     loadUsers();
   }
@@ -128,9 +130,13 @@ export function UsersSection() {
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{u.email}</TableCell>
                   <TableCell>
-                    <Badge variant={u.status === "active" ? "secondary" : "outline"}>
-                      {u.status === "active" ? "Active" : "Not yet signed in"}
-                    </Badge>
+                    {u.isActive ? (
+                      <Badge variant={u.status === "active" ? "secondary" : "outline"}>
+                        {u.status === "active" ? "Active" : "Not yet signed in"}
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive">Deactivated</Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button type="button" size="sm" variant="ghost" onClick={() => setManageUser(u)}>

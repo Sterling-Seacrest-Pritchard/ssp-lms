@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { db } from "./client";
 import { users } from "./schema";
 
@@ -35,7 +35,16 @@ export async function upsertUser(fields: {
   if (byObjectId) {
     await db
       .update(users)
-      .set({ email: fields.email, displayName: fields.displayName, updatedAt: new Date(), ...roleUpdate })
+      .set({
+        email: fields.email,
+        displayName: fields.displayName,
+        // A sync/sign-in seeing this person again means they're currently
+        // assigned in Entra - reactivate them if a prior sync had flipped
+        // this off after they were temporarily removed from the group.
+        isActive: true,
+        updatedAt: new Date(),
+        ...roleUpdate,
+      })
       .where(eq(users.id, byObjectId.id));
     return;
   }
@@ -47,7 +56,13 @@ export async function upsertUser(fields: {
   if (byEmail) {
     await db
       .update(users)
-      .set({ entraObjectId: fields.entraObjectId, displayName: fields.displayName, updatedAt: new Date(), ...roleUpdate })
+      .set({
+        entraObjectId: fields.entraObjectId,
+        displayName: fields.displayName,
+        isActive: true,
+        updatedAt: new Date(),
+        ...roleUpdate,
+      })
       .where(eq(users.id, byEmail.id));
     return;
   }
@@ -58,4 +73,19 @@ export async function upsertUser(fields: {
 export async function getUserIdByEmail(email: string): Promise<string | null> {
   const [row] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
   return row?.id ?? null;
+}
+
+/**
+ * The entraObjectId of every currently-active, previously-synced user - the
+ * baseline `syncAssignedUsers` (lib/entra/sync.ts) diffs against to find
+ * anyone no longer assigned in Entra. A read-only SELECT; the actual
+ * deactivation decision is made by the pure `computeStaleEntraObjectIds` in
+ * that file, not here.
+ */
+export async function getActiveSyncedUserObjectIds(): Promise<string[]> {
+  const rows = await db
+    .select({ entraObjectId: users.entraObjectId })
+    .from(users)
+    .where(and(isNotNull(users.entraObjectId), eq(users.isActive, true)));
+  return rows.map((row) => row.entraObjectId as string);
 }

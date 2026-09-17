@@ -13,6 +13,8 @@ export interface UserWithStatus {
   status: "active" | "pending";
   /** Entra app role last seen at sync time (e.g. "Org Admin", "Learner"), or null if never synced / no distinct role. */
   entraRole: string | null;
+  /** False once a sync no longer finds this person assigned in Entra - distinct from `status`, which tracks sign-in history, not current access. */
+  isActive: boolean;
 }
 
 /**
@@ -29,6 +31,7 @@ export async function listUsersWithStatus(): Promise<UserWithStatus[]> {
     departmentId: u.departmentId,
     status: u.entraObjectId ? "active" : "pending",
     entraRole: u.entraRole,
+    isActive: u.isActive,
   }));
 }
 

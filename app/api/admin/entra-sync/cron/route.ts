@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   try {
     const result = await syncAssignedUsers();
     console.log(
-      `Entra cron sync: ${result.total} total, ${result.created} created, ${result.updated} updated`
+      `Entra cron sync: ${result.total} total, ${result.created} created, ${result.updated} updated, ${result.deactivated} deactivated`
     );
     return NextResponse.json(result);
   } catch (error) {

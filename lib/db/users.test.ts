@@ -46,6 +46,22 @@ describe("upsertUser", () => {
     }
   });
 
+  it("reactivates a previously deactivated user on a later sign-in/sync", async () => {
+    const entraObjectId = randomUUID();
+    const email = `reactivate-${randomUUID()}@example.com`;
+    try {
+      await upsertUser({ entraObjectId, email, displayName: "Reactivate Me" });
+      await db.update(users).set({ isActive: false }).where(eq(users.entraObjectId, entraObjectId));
+
+      await upsertUser({ entraObjectId, email, displayName: "Reactivate Me" });
+
+      const [row] = await db.select().from(users).where(eq(users.entraObjectId, entraObjectId));
+      expect(row.isActive).toBe(true);
+    } finally {
+      await db.delete(users).where(eq(users.entraObjectId, entraObjectId));
+    }
+  });
+
   it("claims a pre-provisioned (synced-but-never-signed-in) row by email instead of inserting a second one", async () => {
     const email = `pending-${randomUUID()}@example.com`;
     const dept = await db
