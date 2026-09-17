@@ -515,6 +515,11 @@ export function BuilderClient({
                   <Label htmlFor="add-module-type">Module type</Label>
                   <Select
                     value={addModuleType}
+                    items={[
+                      { value: "scorm", label: "SCORM Package" },
+                      { value: "video", label: "Video" },
+                      { value: "quiz", label: "Quiz" },
+                    ]}
                     onValueChange={(value) => {
                       setAddModuleType(value as "scorm" | "video" | "quiz");
                       if (value === "video" && videoSource === "library" && libraryVideos === null) {
@@ -576,6 +581,10 @@ export function BuilderClient({
                       <Label htmlFor="video-source">Source</Label>
                       <Select
                         value={videoSource}
+                        items={[
+                          { value: "upload", label: "Upload new video" },
+                          { value: "library", label: "Choose from library" },
+                        ]}
                         onValueChange={(value) => {
                           const source = value as "upload" | "library";
                           setVideoSource(source);
