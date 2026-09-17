@@ -322,6 +322,7 @@ describe("computeLiveCourseProgress", () => {
       await db
         .delete(videoModuleVersions)
         .where(eq(videoModuleVersions.moduleVersionId, videoVersion.id));
+      await db.delete(videoAssets).where(eq(videoAssets.id, erroredAsset.id));
       await db
         .delete(moduleVersions)
         .where(inArray(moduleVersions.id, [scormVersion.id, videoVersion.id]));

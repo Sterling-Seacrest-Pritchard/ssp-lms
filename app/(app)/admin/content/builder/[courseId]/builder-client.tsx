@@ -207,6 +207,13 @@ export function BuilderClient({
 
     const putResponse = await fetch(createBody.uploadUrl, { method: "PUT", body: videoFile });
     if (!putResponse.ok) {
+      // The module/version/videoModuleVersions/videoAssets rows created above
+      // are otherwise orphaned - a failed upload would silently leave a
+      // permanent empty module behind. Roll it back the same way the trash
+      // icon does.
+      await fetch(`/api/admin/courses/${course.id}/modules/${createBody.moduleId}`, {
+        method: "DELETE",
+      }).catch(() => {});
       setVideoError("Upload to Mux failed");
       setVideoUploading(false);
       setVideoStatus(null);

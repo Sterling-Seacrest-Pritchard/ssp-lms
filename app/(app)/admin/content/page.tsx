@@ -6,8 +6,17 @@ import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { courses as mockCourses } from "@/lib/mock-data/courses";
 import type { RealCourseSummary } from "@/lib/db/queries";
 
@@ -16,6 +25,8 @@ export default function ContentAuthoringPage() {
   const [realCourses, setRealCourses] = useState<
     (RealCourseSummary & { status: string })[]
   >([]);
+  const [newCourseOpen, setNewCourseOpen] = useState(false);
+  const [newCourseTitle, setNewCourseTitle] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -26,14 +37,18 @@ export default function ContentAuthoringPage() {
       .catch(() => setRealCourses([]));
   }, []);
 
-  async function handleNewCourse() {
+  async function handleNewCourse(e: React.FormEvent) {
+    e.preventDefault();
     setCreating(true);
     setCreateError(null);
     // Every failure path has to clear `creating`, or the button stays stuck
     // spinning with no way to retry: a non-2xx response, a body that isn't the
     // JSON we expect, and a network error that rejects the fetch outright.
     try {
-      const response = await fetch("/api/admin/courses", { method: "POST" });
+      const response = await fetch("/api/admin/courses", {
+        method: "POST",
+        body: JSON.stringify({ title: newCourseTitle }),
+      });
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.courseId) {
         setCreateError(body?.error ?? "Could not create a course");
@@ -59,11 +74,37 @@ export default function ContentAuthoringPage() {
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          <Button onClick={handleNewCourse} disabled={creating}>
-            <Plus className="h-4 w-4" />
-            {creating ? "Creating…" : "New Course"}
-          </Button>
-          {createError && <p className="text-sm text-destructive">{createError}</p>}
+          <Dialog open={newCourseOpen} onOpenChange={setNewCourseOpen}>
+            <DialogTrigger
+              render={
+                <Button type="button">
+                  <Plus className="h-4 w-4" />
+                  New Course
+                </Button>
+              }
+            />
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>New Course</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleNewCourse} className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="new-course-title">Course title</Label>
+                  <Input
+                    id="new-course-title"
+                    value={newCourseTitle}
+                    onChange={(e) => setNewCourseTitle(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                </div>
+                {createError && <p className="text-sm text-destructive">{createError}</p>}
+                <Button type="submit" disabled={creating}>
+                  {creating ? "Creating…" : "Create Course"}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 

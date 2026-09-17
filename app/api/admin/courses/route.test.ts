@@ -12,8 +12,11 @@ describe("POST /api/admin/courses", () => {
     if (createdId) await db.delete(courses).where(eq(courses.id, createdId));
   });
 
-  it("creates a draft course and returns its id", async () => {
-    const request = new NextRequest("http://localhost/api/admin/courses", { method: "POST" });
+  it("creates a draft course with the given title and returns its id", async () => {
+    const request = new NextRequest("http://localhost/api/admin/courses", {
+      method: "POST",
+      body: JSON.stringify({ title: "My New Course" }),
+    });
     const response = await POST(request);
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -22,5 +25,16 @@ describe("POST /api/admin/courses", () => {
 
     const [course] = await db.select().from(courses).where(eq(courses.id, body.courseId));
     expect(course.status).toBe("draft");
+    expect(course.title).toBe("My New Course");
+  });
+
+  it("rejects a missing or blank title with 400, creating no row", async () => {
+    const missing = await POST(new NextRequest("http://localhost/api/admin/courses", { method: "POST", body: "{}" }));
+    expect(missing.status).toBe(400);
+
+    const blank = await POST(
+      new NextRequest("http://localhost/api/admin/courses", { method: "POST", body: JSON.stringify({ title: "   " }) })
+    );
+    expect(blank.status).toBe(400);
   });
 });

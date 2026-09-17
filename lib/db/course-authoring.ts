@@ -20,10 +20,10 @@ import {
 import { isUuid } from "@/lib/api/errors";
 import { deleteScormPackage } from "@/lib/scorm/extract-package";
 
-export async function createDraftCourse(): Promise<{ id: string }> {
+export async function createDraftCourse(title?: string): Promise<{ id: string }> {
   const [course] = await db
     .insert(courses)
-    .values({ code: `DRAFT-${randomUUID().slice(0, 8)}`, title: "Untitled Course" })
+    .values({ code: `DRAFT-${randomUUID().slice(0, 8)}`, title: title ?? "Untitled Course" })
     .returning();
   return { id: course.id };
 }
