@@ -25,6 +25,7 @@ import {
   quizQuestions,
   scormAttemptState,
   scormModuleVersions,
+  textModuleVersions,
   users,
   videoAssets,
   videoAttemptState,
@@ -115,6 +116,20 @@ async function createTestQuizModule(
     .returning();
   await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, courseModule.id));
   return { moduleVersionId: version.id, questionId: question.id, choiceId: choice.id };
+}
+
+async function createTestTextModule(courseId: string, title: string): Promise<{ moduleVersionId: string }> {
+  const [courseModule] = await db
+    .insert(modules)
+    .values({ courseId, moduleType: "text", title })
+    .returning();
+  const [version] = await db
+    .insert(moduleVersions)
+    .values({ moduleId: courseModule.id, versionNumber: 1, status: "published", publishedAt: new Date() })
+    .returning();
+  await db.insert(textModuleVersions).values({ moduleVersionId: version.id, body: "Some reading content." });
+  await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, courseModule.id));
+  return { moduleVersionId: version.id };
 }
 
 describe("createDraftCourse", () => {
@@ -558,6 +573,22 @@ describe("deleteCourse", () => {
     } finally {
       await db.delete(users).where(eq(users.id, userId));
     }
+  });
+
+  it("deletes a course containing a text module", async () => {
+    const { id: courseId } = await createDraftCourse();
+    const { moduleVersionId } = await createTestTextModule(courseId, "Text Module");
+
+    // Before the fix, deleteCourse -> removeModule 500'd here too:
+    // text_module_versions.module_version_id is a NOT NULL FK with `onDelete:
+    // no action` against module_versions, and removeModule never deleted it.
+    await deleteCourse(courseId);
+
+    expect(await db.select().from(courses).where(eq(courses.id, courseId))).toHaveLength(0);
+    expect(await db.select().from(modules).where(eq(modules.courseId, courseId))).toHaveLength(0);
+    expect(
+      await db.select().from(textModuleVersions).where(eq(textModuleVersions.moduleVersionId, moduleVersionId))
+    ).toHaveLength(0);
   });
 
   it("does nothing for a non-UUID or nonexistent course id", async () => {

@@ -33,6 +33,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -99,6 +100,13 @@ function ModuleRow({
           </Button>
         </Link>
       )}
+      {module.moduleType === "text" && module.moduleVersionId && (
+        <Link href={`/admin/content/builder/${courseId}/text/${module.moduleVersionId}`}>
+          <Button type="button" variant="outline" size="sm">
+            Edit Text
+          </Button>
+        </Link>
+      )}
       <Button
         type="button"
         variant="ghost"
@@ -140,7 +148,11 @@ export function BuilderClient({
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [attachingId, setAttachingId] = useState<string | null>(null);
-  const [addModuleType, setAddModuleType] = useState<"scorm" | "video" | "quiz">("scorm");
+  const [addModuleType, setAddModuleType] = useState<"scorm" | "video" | "quiz" | "text">("scorm");
+  const [textTitle, setTextTitle] = useState("");
+  const [textBody, setTextBody] = useState("");
+  const [textCreating, setTextCreating] = useState(false);
+  const [textError, setTextError] = useState<string | null>(null);
   const [videoSource, setVideoSource] = useState<"upload" | "library">("upload");
   const fileInputRef = useRef<HTMLInputElement>(null);
   // KeyboardSensor alongside the pointer one so the drag handle - already a
@@ -526,9 +538,10 @@ export function BuilderClient({
                       { value: "scorm", label: "SCORM Package" },
                       { value: "video", label: "Video" },
                       { value: "quiz", label: "Quiz" },
+                      { value: "text", label: "Text" },
                     ]}
                     onValueChange={(value) => {
-                      setAddModuleType(value as "scorm" | "video" | "quiz");
+                      setAddModuleType(value as "scorm" | "video" | "quiz" | "text");
                       if (value === "video" && videoSource === "library" && libraryVideos === null) {
                         loadLibraryVideos();
                       }
@@ -541,6 +554,7 @@ export function BuilderClient({
                       <SelectItem value="scorm">SCORM Package</SelectItem>
                       <SelectItem value="video">Video</SelectItem>
                       <SelectItem value="quiz">Quiz</SelectItem>
+                      <SelectItem value="text">Text</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -715,6 +729,59 @@ export function BuilderClient({
                       <Input id="quiz-title" name="title" required placeholder="Module Quiz" />
                     </div>
                     <Button type="submit">Create Quiz</Button>
+                  </form>
+                )}
+                {addModuleType === "text" && (
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      setTextCreating(true);
+                      setTextError(null);
+                      try {
+                        const response = await fetch(`/api/admin/courses/${course.id}/modules/text`, {
+                          method: "POST",
+                          body: JSON.stringify({ title: textTitle, body: textBody }),
+                        });
+                        if (!response.ok) {
+                          const data = await response.json().catch(() => null);
+                          throw new Error(data?.error ?? `Failed to create text module (status ${response.status})`);
+                        }
+                        setTextTitle("");
+                        setTextBody("");
+                        setAddModuleOpen(false);
+                        router.refresh();
+                      } catch (err) {
+                        setTextError(err instanceof Error ? err.message : "Failed to create text module");
+                      } finally {
+                        setTextCreating(false);
+                      }
+                    }}
+                    className="flex flex-col gap-4"
+                  >
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="text-title">Module title</Label>
+                      <Input
+                        id="text-title"
+                        value={textTitle}
+                        onChange={(e) => setTextTitle(e.target.value)}
+                        required
+                        placeholder="Module Reading"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="text-body">Body</Label>
+                      <Textarea
+                        id="text-body"
+                        value={textBody}
+                        onChange={(e) => setTextBody(e.target.value)}
+                        required
+                        rows={10}
+                      />
+                    </div>
+                    {textError && <p className="text-sm text-destructive">{textError}</p>}
+                    <Button type="submit" disabled={textCreating}>
+                      Create Text Module
+                    </Button>
                   </form>
                 )}
               </div>

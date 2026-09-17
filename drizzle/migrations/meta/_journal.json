@@ -99,6 +99,13 @@
       "when": 1789582290864,
       "tag": "0014_quiz_module",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789700000000,
+      "tag": "0015_text_module",
+      "breakpoints": true
     }
   ]
 }

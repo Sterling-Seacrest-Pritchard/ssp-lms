@@ -14,6 +14,7 @@ import {
   quizQuestions,
   scormAttemptState,
   scormModuleVersions,
+  textModuleVersions,
   videoAttemptState,
   videoModuleVersions,
 } from "./schema";
@@ -164,6 +165,7 @@ export async function removeModule(courseId: string, moduleId: string): Promise<
 
       await tx.delete(scormModuleVersions).where(inArray(scormModuleVersions.moduleVersionId, versionIds));
       await tx.delete(videoModuleVersions).where(inArray(videoModuleVersions.moduleVersionId, versionIds));
+      await tx.delete(textModuleVersions).where(inArray(textModuleVersions.moduleVersionId, versionIds));
       await tx.delete(moduleVersions).where(inArray(moduleVersions.id, versionIds));
     }
 

@@ -63,7 +63,6 @@ export default async function VideoPage(props: PageProps<"/courses/[id]/video/[m
       }
 
       const token = await signPlaybackToken(info.muxPlaybackId);
-      const isAdmin = isAdminRole(session?.user?.roles);
 
       return (
         <div className="flex h-full w-full flex-col gap-4">
@@ -73,7 +72,6 @@ export default async function VideoPage(props: PageProps<"/courses/[id]/video/[m
             durationSeconds={info.durationSeconds}
             moduleVersionId={moduleId}
             initialFurthestWatchedSeconds={0}
-            isAdmin={isAdmin}
           />
         </div>
       );

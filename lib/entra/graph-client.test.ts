@@ -122,6 +122,84 @@ describe("listAssignedUsers", () => {
     expect(result).toHaveLength(2);
   });
 
+  it("resolves a group-of-groups (nested sub-groups) the same way as a flat group, since transitiveMembers already flattens the hierarchy", async () => {
+    // Mirrors the real restructuring: the Learner role is now assigned to
+    // one parent group containing 6 office-location sub-groups, each holding
+    // the actual users - instead of one flat all-employees group. Graph's
+    // transitiveMembers endpoint resolves nested groups recursively and
+    // returns only user objects (filtered by the /microsoft.graph.user
+    // segment), so this code needs no special-casing: the parent group's
+    // transitiveMembers response already contains every user from every
+    // sub-group, exactly like the flat-group case already tested above.
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/oauth2/v2.0/token")) {
+        return new Response(JSON.stringify({ access_token: "fake-token", expires_in: 3600 }), { status: 200 });
+      }
+      if (url.includes("$select=appRoles")) {
+        return new Response(
+          JSON.stringify({ appRoles: [{ id: "role-learner", displayName: "Learner", value: "Learner" }] }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/appRoleAssignedTo")) {
+        return new Response(
+          JSON.stringify({
+            value: [
+              { principalId: "all-employees-parent-group", principalDisplayName: "All Employees", principalType: "Group", appRoleId: "role-learner" },
+            ],
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/groups/all-employees-parent-group/transitiveMembers")) {
+        // Graph itself resolves the 6 office sub-groups transitively and
+        // returns only the leaf users, regardless of how many levels of
+        // nested groups sit between the assigned group and these people.
+        return new Response(
+          JSON.stringify({
+            value: [
+              { id: "office-a-user-1", displayName: "Office A User" },
+              { id: "office-b-user-1", displayName: "Office B User" },
+              { id: "office-c-user-1", displayName: "Office C User" },
+            ],
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/users/office-a-user-1")) {
+        return new Response(
+          JSON.stringify({ mail: "office.a@example.com", userPrincipalName: "officea@example.com", displayName: "Office A User" }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/users/office-b-user-1")) {
+        return new Response(
+          JSON.stringify({ mail: "office.b@example.com", userPrincipalName: "officeb@example.com", displayName: "Office B User" }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/users/office-c-user-1")) {
+        return new Response(
+          JSON.stringify({ mail: "office.c@example.com", userPrincipalName: "officec@example.com", displayName: "Office C User" }),
+          { status: 200 }
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await listAssignedUsers();
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        { entraObjectId: "office-a-user-1", displayName: "Office A User", email: "office.a@example.com", entraRole: "Learner" },
+        { entraObjectId: "office-b-user-1", displayName: "Office B User", email: "office.b@example.com", entraRole: "Learner" },
+        { entraObjectId: "office-c-user-1", displayName: "Office C User", email: "office.c@example.com", entraRole: "Learner" },
+      ])
+    );
+    expect(result).toHaveLength(3);
+  });
+
   it("collapses multiple assignments for the same person into their single highest-privilege role", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes("/oauth2/v2.0/token")) {

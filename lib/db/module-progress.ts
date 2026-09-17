@@ -6,10 +6,12 @@ import { getLatestLessonStatus } from "@/lib/scorm/completion-status";
 import { getLatestVideoStatus } from "@/lib/video/completion-status";
 import { getTrackedModuleVersionIds } from "@/lib/scorm/course-progress";
 import { getLatestQuizStatus } from "@/lib/quiz/completion-status";
+import { getLatestTextStatus } from "@/lib/text/completion-status";
 
 const FINISHED_LESSON_STATUSES = new Set(["completed", "passed"]);
 const FINISHED_VIDEO_STATUSES = new Set(["completed"]);
 const FINISHED_QUIZ_STATUSES = new Set(["completed"]);
+const FINISHED_TEXT_STATUSES = new Set(["completed"]);
 
 /**
  * Called by both commit routes (app/api/scorm/commit, app/api/video/commit)
@@ -86,6 +88,10 @@ async function isModuleFinished(moduleType: string, moduleVersionId: string, use
   if (moduleType === "quiz") {
     const status = await getLatestQuizStatus(moduleVersionId, userId);
     return status !== null && FINISHED_QUIZ_STATUSES.has(status);
+  }
+  if (moduleType === "text") {
+    const status = await getLatestTextStatus(moduleVersionId, userId);
+    return status !== null && FINISHED_TEXT_STATUSES.has(status);
   }
   const lessonStatus = await getLatestLessonStatus(moduleVersionId, userId);
   return lessonStatus !== null && FINISHED_LESSON_STATUSES.has(lessonStatus);

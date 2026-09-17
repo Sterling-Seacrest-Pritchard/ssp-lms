@@ -15,6 +15,7 @@ import {
   quizQuestions,
   quizChoices,
   quizAttemptAnswers,
+  textModuleVersions,
 } from "./schema";
 
 describe("minimal SCORM schema", () => {
@@ -256,6 +257,39 @@ describe("quiz schema", () => {
       await db.delete(modules).where(eq(modules.id, mod.id));
       await db.delete(courses).where(eq(courses.id, course.id));
       await db.delete(users).where(eq(users.id, user.id));
+    }
+  });
+});
+
+describe("text module schema", () => {
+  it("supports a text module version with a large text body", async () => {
+    const [course] = await db
+      .insert(courses)
+      .values({ code: `TEXT-SCHEMA-${randomUUID()}`, title: "Text Schema Course" })
+      .returning();
+    const [mod] = await db
+      .insert(modules)
+      .values({ courseId: course.id, moduleType: "text", title: "Text Module" })
+      .returning();
+    const [version] = await db
+      .insert(moduleVersions)
+      .values({ moduleId: mod.id, versionNumber: 1, status: "draft" })
+      .returning();
+
+    const longBody = "This is a paragraph of reading content. ".repeat(200);
+
+    try {
+      const [textVersion] = await db
+        .insert(textModuleVersions)
+        .values({ moduleVersionId: version.id, body: longBody })
+        .returning();
+      expect(textVersion.body).toBe(longBody);
+      expect(textVersion.body.length).toBeGreaterThan(2000);
+    } finally {
+      await db.delete(textModuleVersions).where(eq(textModuleVersions.moduleVersionId, version.id));
+      await db.delete(moduleVersions).where(eq(moduleVersions.id, version.id));
+      await db.delete(modules).where(eq(modules.id, mod.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
     }
   });
 });

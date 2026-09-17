@@ -179,6 +179,13 @@ export const moduleAttempts = pgTable(
   (table) => [unique().on(table.moduleVersionId, table.userId, table.attemptNumber)]
 );
 
+export const textModuleVersions = pgTable("text_module_versions", {
+  moduleVersionId: uuid("module_version_id")
+    .primaryKey()
+    .references(() => moduleVersions.id),
+  body: text("body").notNull(),
+});
+
 export const quizModuleVersions = pgTable("quiz_module_versions", {
   moduleVersionId: uuid("module_version_id")
     .primaryKey()

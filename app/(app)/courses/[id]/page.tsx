@@ -10,6 +10,7 @@ import { getRealCourseDetail } from "@/lib/db/queries";
 import { getLatestLessonStatus } from "@/lib/scorm/completion-status";
 import { getLatestVideoStatus } from "@/lib/video/completion-status";
 import { getLatestQuizStatus } from "@/lib/quiz/completion-status";
+import { getLatestTextStatus } from "@/lib/text/completion-status";
 import { getTrackedModuleVersionIds } from "@/lib/scorm/course-progress";
 import { getUserIdByEmail } from "@/lib/db/users";
 import { getEnrollmentId } from "@/lib/db/enrollments";
@@ -75,6 +76,9 @@ export default async function CourseDetailPage(props: PageProps<"/courses/[id]">
             } else if (module.moduleType === "quiz") {
               const quizStatus = await getLatestQuizStatus(module.moduleVersionId, userId);
               done = quizStatus === "completed";
+            } else if (module.moduleType === "text") {
+              const textStatus = await getLatestTextStatus(module.moduleVersionId, userId);
+              done = textStatus === "completed";
             } else {
               const lessonStatus = await getLatestLessonStatus(module.moduleVersionId, userId);
               done = lessonStatus === "completed" || lessonStatus === "passed";
@@ -161,7 +165,9 @@ export default async function CourseDetailPage(props: PageProps<"/courses/[id]">
                           ? `/courses/${realCourse.id}/video/${module.moduleVersionId}`
                           : module.moduleType === "quiz"
                             ? `/courses/${realCourse.id}/quiz/${module.moduleVersionId}`
-                            : `/courses/${realCourse.id}/scorm/${module.moduleVersionId}`
+                            : module.moduleType === "text"
+                              ? `/courses/${realCourse.id}/text/${module.moduleVersionId}`
+                              : `/courses/${realCourse.id}/scorm/${module.moduleVersionId}`
                       }
                     >
                       <Button variant={module.done ? "outline" : "default"} size="sm">
