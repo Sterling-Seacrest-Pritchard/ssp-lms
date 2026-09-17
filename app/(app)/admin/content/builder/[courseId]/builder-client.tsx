@@ -51,7 +51,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CourseForBuilder, BuilderModule } from "@/lib/db/queries";
 import type { LibraryVideo } from "@/lib/video/assets";
 
@@ -141,6 +140,8 @@ export function BuilderClient({
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [attachingId, setAttachingId] = useState<string | null>(null);
+  const [addModuleType, setAddModuleType] = useState<"scorm" | "video" | "quiz">("scorm");
+  const [videoSource, setVideoSource] = useState<"upload" | "library">("upload");
   const fileInputRef = useRef<HTMLInputElement>(null);
   // KeyboardSensor alongside the pointer one so the drag handle - already a
   // focusable <button> carrying the dnd-kit activator props - can reorder
@@ -509,20 +510,30 @@ export function BuilderClient({
               <DialogHeader>
                 <DialogTitle>Add Module</DialogTitle>
               </DialogHeader>
-              <Tabs
-                defaultValue="scorm"
-                onValueChange={(value) => {
-                  if (value === "existing-video" && libraryVideos === null) loadLibraryVideos();
-                }}
-              >
-                <TabsList>
-                  <TabsTrigger value="scorm">Upload SCORM Package</TabsTrigger>
-                  <TabsTrigger value="video">Upload Video</TabsTrigger>
-                  <TabsTrigger value="existing-video">Add from Library</TabsTrigger>
-                  <TabsTrigger value="quiz">Add Quiz</TabsTrigger>
-                </TabsList>
-                <TabsContent value="scorm">
-                  <form onSubmit={handleUploadScorm} className="flex flex-col gap-4 pt-4">
+              <div className="flex flex-col gap-4 pt-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="add-module-type">Module type</Label>
+                  <Select
+                    value={addModuleType}
+                    onValueChange={(value) => {
+                      setAddModuleType(value as "scorm" | "video" | "quiz");
+                      if (value === "video" && videoSource === "library" && libraryVideos === null) {
+                        loadLibraryVideos();
+                      }
+                    }}
+                  >
+                    <SelectTrigger id="add-module-type" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="scorm">SCORM Package</SelectItem>
+                      <SelectItem value="video">Video</SelectItem>
+                      <SelectItem value="quiz">Quiz</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {addModuleType === "scorm" && (
+                  <form onSubmit={handleUploadScorm} className="flex flex-col gap-4">
                     <div className="flex flex-col gap-1.5">
                       <Label htmlFor="scormModuleTitle">Module Title</Label>
                       <Input
@@ -558,92 +569,115 @@ export function BuilderClient({
                       {uploading ? "Uploading…" : "Upload"}
                     </Button>
                   </form>
-                </TabsContent>
-                <TabsContent value="video">
-                  <form onSubmit={handleAddVideo} className="flex flex-col gap-4 pt-4">
+                )}
+                {addModuleType === "video" && (
+                  <div className="flex flex-col gap-4">
                     <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="videoTitle">Module Title</Label>
-                      <Input
-                        id="videoTitle"
-                        value={videoTitle}
-                        onChange={(e) => setVideoTitle(e.target.value)}
-                        required
-                      />
+                      <Label htmlFor="video-source">Source</Label>
+                      <Select
+                        value={videoSource}
+                        onValueChange={(value) => {
+                          const source = value as "upload" | "library";
+                          setVideoSource(source);
+                          if (source === "library" && libraryVideos === null) loadLibraryVideos();
+                        }}
+                      >
+                        <SelectTrigger id="video-source" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="upload">Upload new video</SelectItem>
+                          <SelectItem value="library">Choose from library</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="videoFile">Video File</Label>
-                      <input
-                        id="videoFile"
-                        type="file"
-                        accept="video/*"
-                        onChange={(e) => setVideoFile(e.target.files?.[0] ?? null)}
-                      />
-                      {videoFile && (
-                        <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <PlayCircle className="h-3.5 w-3.5" />
-                          {videoFile.name}
-                        </p>
-                      )}
-                    </div>
-                    {videoStatus && (
-                      <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                        {videoUploading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                        Status: {videoStatus}
-                      </p>
+                    {videoSource === "upload" && (
+                      <form onSubmit={handleAddVideo} className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor="videoTitle">Module Title</Label>
+                          <Input
+                            id="videoTitle"
+                            value={videoTitle}
+                            onChange={(e) => setVideoTitle(e.target.value)}
+                            required
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor="videoFile">Video File</Label>
+                          <input
+                            id="videoFile"
+                            type="file"
+                            accept="video/*"
+                            onChange={(e) => setVideoFile(e.target.files?.[0] ?? null)}
+                          />
+                          {videoFile && (
+                            <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <PlayCircle className="h-3.5 w-3.5" />
+                              {videoFile.name}
+                            </p>
+                          )}
+                        </div>
+                        {videoStatus && (
+                          <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                            {videoUploading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                            Status: {videoStatus}
+                          </p>
+                        )}
+                        {videoError && <p className="text-sm text-destructive">{videoError}</p>}
+                        <Button type="submit" disabled={videoUploading}>
+                          {videoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+                          {videoUploading ? "Uploading…" : "Upload Video"}
+                        </Button>
+                      </form>
                     )}
-                    {videoError && <p className="text-sm text-destructive">{videoError}</p>}
-                    <Button type="submit" disabled={videoUploading}>
-                      {videoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
-                      {videoUploading ? "Uploading…" : "Upload Video"}
-                    </Button>
-                  </form>
-                </TabsContent>
-                <TabsContent value="existing-video">
-                  <div className="flex flex-col gap-3 pt-4">
-                    {libraryLoading && (
-                      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" /> Loading library…
-                      </p>
-                    )}
-                    {libraryError && <p className="text-sm text-destructive">{libraryError}</p>}
-                    {!libraryLoading && libraryVideos?.length === 0 && (
-                      <p className="text-sm text-muted-foreground">
-                        The Video Library is empty — upload a video there first.
-                      </p>
-                    )}
-                    {libraryVideos && libraryVideos.length > 0 && (
-                      <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
-                        {libraryVideos.map((video) => (
-                          <div
-                            key={video.id}
-                            className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2.5"
-                          >
-                            <Library className="h-4 w-4 shrink-0 text-muted-foreground" />
-                            <div className="flex-1">
-                              <p className="text-sm font-medium">{video.title}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {video.status}
-                                {video.durationSeconds ? ` · ${Math.round(video.durationSeconds / 60)} min` : ""}
-                                {video.moduleCount > 0 ? ` · used in ${video.moduleCount} module(s)` : ""}
-                              </p>
-                            </div>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              disabled={attachingId === video.id || video.status !== "ready"}
-                              onClick={() => handleAttachExisting(video)}
-                            >
-                              {attachingId === video.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                              Add
-                            </Button>
+                    {videoSource === "library" && (
+                      <div className="flex flex-col gap-3">
+                        {libraryLoading && (
+                          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" /> Loading library…
+                          </p>
+                        )}
+                        {libraryError && <p className="text-sm text-destructive">{libraryError}</p>}
+                        {!libraryLoading && libraryVideos?.length === 0 && (
+                          <p className="text-sm text-muted-foreground">
+                            The Video Library is empty — upload a video there first.
+                          </p>
+                        )}
+                        {libraryVideos && libraryVideos.length > 0 && (
+                          <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+                            {libraryVideos.map((video) => (
+                              <div
+                                key={video.id}
+                                className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2.5"
+                              >
+                                <Library className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                <div className="flex-1">
+                                  <p className="text-sm font-medium">{video.title}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {video.status}
+                                    {video.durationSeconds ? ` · ${Math.round(video.durationSeconds / 60)} min` : ""}
+                                    {video.moduleCount > 0 ? ` · used in ${video.moduleCount} module(s)` : ""}
+                                  </p>
+                                </div>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={attachingId === video.id || video.status !== "ready"}
+                                  onClick={() => handleAttachExisting(video)}
+                                >
+                                  {attachingId === video.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                                  Add
+                                </Button>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        )}
                       </div>
                     )}
                   </div>
-                </TabsContent>
-                <TabsContent value="quiz">
+                )}
+                {addModuleType === "quiz" && (
                   <form
                     onSubmit={async (e) => {
                       e.preventDefault();
@@ -658,7 +692,7 @@ export function BuilderClient({
                         router.refresh();
                       }
                     }}
-                    className="flex flex-col gap-4 pt-4"
+                    className="flex flex-col gap-4"
                   >
                     <div className="flex flex-col gap-1.5">
                       <Label htmlFor="quiz-title">Quiz title</Label>
@@ -666,8 +700,8 @@ export function BuilderClient({
                     </div>
                     <Button type="submit">Create Quiz</Button>
                   </form>
-                </TabsContent>
-              </Tabs>
+                )}
+              </div>
             </DialogContent>
           </Dialog>
         </CardHeader>
