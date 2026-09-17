@@ -1,24 +1,95 @@
 import { notFound } from "next/navigation";
-import { courses } from "@/lib/mock-data/courses";
-import { getQuiz } from "@/lib/mock-data/quizzes";
-import { QuizRunner } from "@/components/quiz/quiz-runner";
+import { CheckCircle2, XCircle } from "lucide-react";
+import { auth } from "@/auth";
+import { db } from "@/lib/db/client";
+import { eq } from "drizzle-orm";
+import { modules, moduleVersions, quizModuleVersions, quizQuestions, quizChoices } from "@/lib/db/schema";
+import { getLatestQuizStatus } from "@/lib/quiz/completion-status";
+import { getUserIdByEmail } from "@/lib/db/users";
+import { getEnrollmentId } from "@/lib/db/enrollments";
+import { isAdminRole } from "@/lib/roles";
+import { QuizPlayer } from "@/components/quiz/quiz-player";
+import { UnavailableState } from "@/components/ui/unavailable-state";
+import { isNextNotFoundError } from "@/lib/utils";
 
-export default async function QuizPage(props: PageProps<"/courses/[id]/quiz/[moduleId]">) {
-  const { id, moduleId } = await props.params;
-  const course = courses.find((c) => c.id === id);
-  const courseModule = course?.modules.find((m) => m.id === moduleId);
-  const quiz = getQuiz(id, moduleId);
+export default async function LearnerQuizPage(
+  props: PageProps<"/courses/[id]/quiz/[moduleId]">
+) {
+  const { id: courseId, moduleId } = await props.params;
 
-  if (!course || !courseModule || !quiz) {
+  const session = await auth();
+  const userEmail = session?.user?.email;
+  if (!userEmail) {
+    notFound();
+  }
+  const userId = await getUserIdByEmail(userEmail);
+  if (!userId) {
     notFound();
   }
 
-  return (
-    <QuizRunner
-      courseId={course.id}
-      courseTitle={course.title}
-      moduleTitle={courseModule.title}
-      quiz={quiz}
-    />
-  );
+  try {
+    // Resolve the module's real courseId ourselves (same anti-IDOR pattern
+    // as the SCORM/video pages) - never trust the URL's courseId without
+    // confirming this module actually belongs to it.
+    const [moduleRow] = await db
+      .select({ courseId: modules.courseId })
+      .from(moduleVersions)
+      .innerJoin(modules, eq(modules.id, moduleVersions.moduleId))
+      .where(eq(moduleVersions.id, moduleId));
+    if (!moduleRow || moduleRow.courseId !== courseId) {
+      notFound();
+    }
+
+    if (!isAdminRole(session.user?.roles)) {
+      const enrollmentId = await getEnrollmentId(userId, moduleRow.courseId);
+      if (!enrollmentId) {
+        notFound();
+      }
+    }
+
+    const quizStatus = await getLatestQuizStatus(moduleId, userId);
+    if (quizStatus === "completed" || quizStatus === "failed") {
+      return (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center">
+          {quizStatus === "completed" ? (
+            <CheckCircle2 className="h-10 w-10 text-emerald-600" />
+          ) : (
+            <XCircle className="h-10 w-10 text-destructive" />
+          )}
+          <p className="text-lg font-medium">{quizStatus === "completed" ? "Quiz passed" : "Quiz not passed"}</p>
+          <p className="text-sm text-muted-foreground">You&apos;ve already completed this quiz.</p>
+        </div>
+      );
+    }
+
+    const [quizVersion] = await db
+      .select()
+      .from(quizModuleVersions)
+      .where(eq(quizModuleVersions.moduleVersionId, moduleId));
+    if (!quizVersion) {
+      notFound();
+    }
+    const questions = await db
+      .select()
+      .from(quizQuestions)
+      .where(eq(quizQuestions.quizModuleVersionId, moduleId))
+      .orderBy(quizQuestions.sortOrder);
+    const questionsWithChoices = await Promise.all(
+      questions.map(async (question) => {
+        const choices = await db
+          .select({ id: quizChoices.id, choiceText: quizChoices.choiceText })
+          .from(quizChoices)
+          .where(eq(quizChoices.questionId, question.id))
+          .orderBy(quizChoices.sortOrder);
+        return { id: question.id, prompt: question.prompt, questionType: question.questionType, choices };
+      })
+    );
+
+    return <QuizPlayer moduleVersionId={moduleId} questions={questionsWithChoices} />;
+  } catch (err) {
+    if (isNextNotFoundError(err)) {
+      throw err;
+    }
+    return <UnavailableState message="Could not load this quiz right now. Please try again in a moment." />;
+  }
 }
