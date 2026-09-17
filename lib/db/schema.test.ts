@@ -2,7 +2,20 @@ import { describe, it, expect, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db } from "./client";
-import { courses, enrollments, moduleProgress, modules, moduleVersions, departments, users } from "./schema";
+import {
+  courses,
+  enrollments,
+  moduleProgress,
+  modules,
+  moduleVersions,
+  departments,
+  users,
+  moduleAttempts,
+  quizModuleVersions,
+  quizQuestions,
+  quizChoices,
+  quizAttemptAnswers,
+} from "./schema";
 
 describe("minimal SCORM schema", () => {
   const courseCode = `TEST-${randomUUID()}`;
@@ -160,6 +173,86 @@ describe("moduleProgress", () => {
     } finally {
       await db.delete(moduleProgress).where(eq(moduleProgress.enrollmentId, enrollment.id));
       await db.delete(enrollments).where(eq(enrollments.id, enrollment.id));
+      await db.delete(modules).where(eq(modules.id, mod.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+      await db.delete(users).where(eq(users.id, user.id));
+    }
+  });
+});
+
+describe("quiz schema", () => {
+  it("supports a full quiz module version with questions, choices, and a scored attempt answer", async () => {
+    const [user] = await db
+      .insert(users)
+      .values({ email: `quiz-schema-${randomUUID()}@example.com`, displayName: "Quiz Schema Test" })
+      .returning();
+    const [course] = await db
+      .insert(courses)
+      .values({ code: `QUIZ-SCHEMA-${randomUUID()}`, title: "Quiz Schema Course" })
+      .returning();
+    const [mod] = await db
+      .insert(modules)
+      .values({ courseId: course.id, moduleType: "quiz", title: "Quiz Module" })
+      .returning();
+    const [version] = await db
+      .insert(moduleVersions)
+      .values({ moduleId: mod.id, versionNumber: 1, status: "draft" })
+      .returning();
+    const [quizVersion] = await db
+      .insert(quizModuleVersions)
+      .values({ moduleVersionId: version.id, passingScorePct: 70 })
+      .returning();
+    const [question] = await db
+      .insert(quizQuestions)
+      .values({
+        quizModuleVersionId: quizVersion.moduleVersionId,
+        sortOrder: 0,
+        questionType: "single_choice",
+        prompt: "2 + 2?",
+        points: 1,
+      })
+      .returning();
+    const [choiceA] = await db
+      .insert(quizChoices)
+      .values({ questionId: question.id, sortOrder: 0, choiceText: "3", isCorrect: false })
+      .returning();
+    const [choiceB] = await db
+      .insert(quizChoices)
+      .values({ questionId: question.id, sortOrder: 1, choiceText: "4", isCorrect: true })
+      .returning();
+    const [attempt] = await db
+      .insert(moduleAttempts)
+      .values({ moduleVersionId: version.id, userId: user.id, attemptNumber: 1 })
+      .returning();
+
+    try {
+      const [answer] = await db
+        .insert(quizAttemptAnswers)
+        .values({
+          moduleAttemptId: attempt.id,
+          questionId: question.id,
+          selectedChoiceIds: [choiceB.id],
+          isCorrect: true,
+        })
+        .returning();
+      expect(answer.isCorrect).toBe(true);
+      expect(answer.selectedChoiceIds).toEqual([choiceB.id]);
+
+      await expect(
+        db.insert(quizAttemptAnswers).values({
+          moduleAttemptId: attempt.id,
+          questionId: question.id,
+          selectedChoiceIds: [choiceA.id],
+          isCorrect: false,
+        })
+      ).rejects.toThrow();
+    } finally {
+      await db.delete(quizAttemptAnswers).where(eq(quizAttemptAnswers.moduleAttemptId, attempt.id));
+      await db.delete(moduleAttempts).where(eq(moduleAttempts.id, attempt.id));
+      await db.delete(quizChoices).where(eq(quizChoices.questionId, question.id));
+      await db.delete(quizQuestions).where(eq(quizQuestions.id, question.id));
+      await db.delete(quizModuleVersions).where(eq(quizModuleVersions.moduleVersionId, version.id));
+      await db.delete(moduleVersions).where(eq(moduleVersions.id, version.id));
       await db.delete(modules).where(eq(modules.id, mod.id));
       await db.delete(courses).where(eq(courses.id, course.id));
       await db.delete(users).where(eq(users.id, user.id));

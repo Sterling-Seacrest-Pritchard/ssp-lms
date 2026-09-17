@@ -179,6 +179,58 @@ export const moduleAttempts = pgTable(
   (table) => [unique().on(table.moduleVersionId, table.userId, table.attemptNumber)]
 );
 
+export const quizModuleVersions = pgTable("quiz_module_versions", {
+  moduleVersionId: uuid("module_version_id")
+    .primaryKey()
+    .references(() => moduleVersions.id),
+  passingScorePct: integer("passing_score_pct").notNull(),
+  // Reserved for a future pass - no code reads or writes these in v1.
+  timeLimitSeconds: integer("time_limit_seconds"),
+  maxAttempts: integer("max_attempts"),
+  shuffleQuestions: boolean("shuffle_questions").notNull().default(false),
+  instructions: text("instructions"),
+});
+
+export const quizQuestions = pgTable("quiz_questions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  quizModuleVersionId: uuid("quiz_module_version_id")
+    .notNull()
+    .references(() => quizModuleVersions.moduleVersionId),
+  sortOrder: integer("sort_order").notNull().default(0),
+  // 'single_choice' | 'multi_choice' | 'true_false' | 'text' - plain text,
+  // app-validated (Global Constraints: 'text' is schema-legal but every v1
+  // code path rejects it).
+  questionType: text("question_type").notNull(),
+  prompt: text("prompt").notNull(),
+  points: integer("points").notNull().default(1),
+});
+
+export const quizChoices = pgTable("quiz_choices", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  questionId: uuid("question_id")
+    .notNull()
+    .references(() => quizQuestions.id),
+  sortOrder: integer("sort_order").notNull().default(0),
+  choiceText: text("choice_text").notNull(),
+  isCorrect: boolean("is_correct").notNull().default(false),
+});
+
+export const quizAttemptAnswers = pgTable(
+  "quiz_attempt_answers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    moduleAttemptId: uuid("module_attempt_id")
+      .notNull()
+      .references(() => moduleAttempts.id),
+    questionId: uuid("question_id")
+      .notNull()
+      .references(() => quizQuestions.id),
+    selectedChoiceIds: uuid("selected_choice_ids").array().notNull().default([]),
+    isCorrect: boolean("is_correct").notNull(),
+  },
+  (table) => [unique().on(table.moduleAttemptId, table.questionId)]
+);
+
 export const scormAttemptState = pgTable("scorm_attempt_state", {
   moduleAttemptId: uuid("module_attempt_id")
     .primaryKey()

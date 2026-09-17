@@ -5,9 +5,11 @@ import { isUuid } from "@/lib/api/errors";
 import { getLatestLessonStatus } from "./completion-status";
 import { getLatestVideoStatus } from "@/lib/video/completion-status";
 import { getReadyVideoModuleVersionIds } from "@/lib/video/launch-info";
+import { getLatestQuizStatus } from "@/lib/quiz/completion-status";
 
 const FINISHED_STATUSES = new Set(["completed", "passed"]);
 const VIDEO_FINISHED_STATUSES = new Set(["completed"]);
+const QUIZ_FINISHED_STATUSES = new Set(["completed"]);
 
 /**
  * Module types that report completion back to the LMS. Video now has a real
@@ -17,7 +19,7 @@ const VIDEO_FINISHED_STATUSES = new Set(["completed"]);
  * Type alone is NOT sufficient for video - see
  * `getTrackedModuleVersionIds`, which is what callers should use.
  */
-const TRACKED_MODULE_TYPES = new Set(["scorm", "video"]);
+const TRACKED_MODULE_TYPES = new Set(["scorm", "video", "quiz"]);
 
 export interface CourseProgress {
   status: "not-started" | "in-progress" | "completed";
@@ -72,6 +74,10 @@ export async function isModuleFinishedForUser(
   if (moduleType === "video") {
     const status = await getLatestVideoStatus(moduleVersionId, userId);
     return status !== null && VIDEO_FINISHED_STATUSES.has(status);
+  }
+  if (moduleType === "quiz") {
+    const status = await getLatestQuizStatus(moduleVersionId, userId);
+    return status !== null && QUIZ_FINISHED_STATUSES.has(status);
   }
   const lessonStatus = await getLatestLessonStatus(moduleVersionId, userId);
   return lessonStatus !== null && FINISHED_STATUSES.has(lessonStatus);

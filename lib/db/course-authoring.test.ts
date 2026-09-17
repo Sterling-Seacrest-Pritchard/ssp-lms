@@ -19,6 +19,10 @@ import {
   moduleProgress,
   modules,
   moduleVersions,
+  quizAttemptAnswers,
+  quizChoices,
+  quizModuleVersions,
+  quizQuestions,
   scormAttemptState,
   scormModuleVersions,
   users,
@@ -86,6 +90,31 @@ async function createTestVideoModule(courseId: string, title: string): Promise<{
   await db.insert(videoModuleVersions).values({ moduleVersionId: version.id, videoAssetId: asset.id });
   await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, courseModule.id));
   return { moduleVersionId: version.id, videoAssetId: asset.id };
+}
+
+async function createTestQuizModule(
+  courseId: string,
+  title: string
+): Promise<{ moduleVersionId: string; questionId: string; choiceId: string }> {
+  const [courseModule] = await db
+    .insert(modules)
+    .values({ courseId, moduleType: "quiz", title })
+    .returning();
+  const [version] = await db
+    .insert(moduleVersions)
+    .values({ moduleId: courseModule.id, versionNumber: 1, status: "published", publishedAt: new Date() })
+    .returning();
+  await db.insert(quizModuleVersions).values({ moduleVersionId: version.id, passingScorePct: 70 });
+  const [question] = await db
+    .insert(quizQuestions)
+    .values({ quizModuleVersionId: version.id, questionType: "single_choice", prompt: "2+2?", points: 1 })
+    .returning();
+  const [choice] = await db
+    .insert(quizChoices)
+    .values({ questionId: question.id, choiceText: "4", isCorrect: true })
+    .returning();
+  await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, courseModule.id));
+  return { moduleVersionId: version.id, questionId: question.id, choiceId: choice.id };
 }
 
 describe("createDraftCourse", () => {
@@ -370,6 +399,49 @@ describe("removeModule", () => {
     }
   });
 
+  it("removes a quiz module a learner has already attempted, deleting its questions/choices and attempt answers", async () => {
+    const { id: courseId } = await createDraftCourse();
+    const [testUser] = await db
+      .insert(users)
+      .values({ email: `remove-quiz-module-test-${randomUUID()}@example.com`, displayName: "Remove Quiz Module Test" })
+      .returning();
+    const userId = testUser.id;
+    try {
+      const { moduleVersionId, questionId, choiceId } = await createTestQuizModule(courseId, "Quiz To Remove");
+      const [mod] = await db.select().from(modules).where(eq(modules.currentVersionId, moduleVersionId));
+      const [attempt] = await db
+        .insert(moduleAttempts)
+        .values({ moduleVersionId, userId, attemptNumber: 1 })
+        .returning();
+      await db.insert(quizAttemptAnswers).values({
+        moduleAttemptId: attempt.id,
+        questionId,
+        selectedChoiceIds: [choiceId],
+        isCorrect: true,
+      });
+
+      // Before the fix, this 500'd with a FK violation on quiz_attempt_answers
+      // (references module_attempts) and again on quiz_questions/quiz_choices
+      // (reference quiz_module_versions -> module_versions), leaving the
+      // module permanently stuck.
+      await removeModule(courseId, mod.id);
+
+      expect(await db.select().from(modules).where(eq(modules.courseId, courseId))).toHaveLength(0);
+      expect(await db.select().from(moduleAttempts).where(eq(moduleAttempts.id, attempt.id))).toHaveLength(0);
+      expect(
+        await db.select().from(quizAttemptAnswers).where(eq(quizAttemptAnswers.moduleAttemptId, attempt.id))
+      ).toHaveLength(0);
+      expect(await db.select().from(quizQuestions).where(eq(quizQuestions.id, questionId))).toHaveLength(0);
+      expect(await db.select().from(quizChoices).where(eq(quizChoices.id, choiceId))).toHaveLength(0);
+      expect(
+        await db.select().from(quizModuleVersions).where(eq(quizModuleVersions.moduleVersionId, moduleVersionId))
+      ).toHaveLength(0);
+    } finally {
+      await db.delete(courses).where(eq(courses.id, courseId));
+      await db.delete(users).where(eq(users.id, userId));
+    }
+  });
+
   it("does nothing if the module belongs to a different course", async () => {
     const { id: courseId } = await createDraftCourse();
     const { id: otherCourseId } = await createDraftCourse();
@@ -447,6 +519,42 @@ describe("deleteCourse", () => {
       expect(
         await db.select().from(moduleProgress).where(eq(moduleProgress.enrollmentId, enrollment.id))
       ).toHaveLength(0);
+    } finally {
+      await db.delete(users).where(eq(users.id, userId));
+    }
+  });
+
+  it("deletes a course containing a quiz module a learner has already attempted", async () => {
+    const { id: courseId } = await createDraftCourse();
+    const [testUser] = await db
+      .insert(users)
+      .values({ email: `delete-course-quiz-test-${randomUUID()}@example.com`, displayName: "Delete Course Quiz Test" })
+      .returning();
+    const userId = testUser.id;
+    const { moduleVersionId, questionId, choiceId } = await createTestQuizModule(courseId, "Quiz Module");
+    const [attempt] = await db
+      .insert(moduleAttempts)
+      .values({ moduleVersionId, userId, attemptNumber: 1 })
+      .returning();
+    await db.insert(quizAttemptAnswers).values({
+      moduleAttemptId: attempt.id,
+      questionId,
+      selectedChoiceIds: [choiceId],
+      isCorrect: true,
+    });
+
+    try {
+      // Before the fix, deleteCourse -> removeModule 500'd on the quiz FKs,
+      // leaving the course (and module) stuck forever.
+      await deleteCourse(courseId);
+
+      expect(await db.select().from(courses).where(eq(courses.id, courseId))).toHaveLength(0);
+      expect(await db.select().from(modules).where(eq(modules.courseId, courseId))).toHaveLength(0);
+      expect(await db.select().from(moduleAttempts).where(eq(moduleAttempts.id, attempt.id))).toHaveLength(0);
+      expect(
+        await db.select().from(quizAttemptAnswers).where(eq(quizAttemptAnswers.moduleAttemptId, attempt.id))
+      ).toHaveLength(0);
+      expect(await db.select().from(quizQuestions).where(eq(quizQuestions.id, questionId))).toHaveLength(0);
     } finally {
       await db.delete(users).where(eq(users.id, userId));
     }

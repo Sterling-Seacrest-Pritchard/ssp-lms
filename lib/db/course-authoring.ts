@@ -8,6 +8,10 @@ import {
   moduleProgress,
   modules,
   moduleVersions,
+  quizAttemptAnswers,
+  quizChoices,
+  quizModuleVersions,
+  quizQuestions,
   scormAttemptState,
   scormModuleVersions,
   videoAttemptState,
@@ -125,7 +129,37 @@ export async function removeModule(courseId: string, moduleId: string): Promise<
         await tx
           .delete(videoAttemptState)
           .where(inArray(videoAttemptState.moduleAttemptId, attemptIds));
+        // quiz_attempt_answers.module_attempt_id is a NOT NULL FK with
+        // `onDelete: no action` against module_attempts - same reasoning as
+        // the two attempt-state tables above, so it must be cleared here too
+        // before module_attempts is deleted.
+        await tx
+          .delete(quizAttemptAnswers)
+          .where(inArray(quizAttemptAnswers.moduleAttemptId, attemptIds));
         await tx.delete(moduleAttempts).where(inArray(moduleAttempts.id, attemptIds));
+      }
+
+      // quiz_choices -> quiz_questions -> quiz_module_versions, all NOT NULL
+      // FKs with `onDelete: no action` down to module_versions - same
+      // ordering requirement as the SCORM/video per-type tables above.
+      const quizVersions = await tx
+        .select({ moduleVersionId: quizModuleVersions.moduleVersionId })
+        .from(quizModuleVersions)
+        .where(inArray(quizModuleVersions.moduleVersionId, versionIds));
+      if (quizVersions.length) {
+        const quizVersionIds = quizVersions.map((v) => v.moduleVersionId);
+        const questions = await tx
+          .select({ id: quizQuestions.id })
+          .from(quizQuestions)
+          .where(inArray(quizQuestions.quizModuleVersionId, quizVersionIds));
+        const questionIds = questions.map((q) => q.id);
+        if (questionIds.length) {
+          await tx.delete(quizChoices).where(inArray(quizChoices.questionId, questionIds));
+          await tx.delete(quizQuestions).where(inArray(quizQuestions.id, questionIds));
+        }
+        await tx
+          .delete(quizModuleVersions)
+          .where(inArray(quizModuleVersions.moduleVersionId, quizVersionIds));
       }
 
       await tx.delete(scormModuleVersions).where(inArray(scormModuleVersions.moduleVersionId, versionIds));
