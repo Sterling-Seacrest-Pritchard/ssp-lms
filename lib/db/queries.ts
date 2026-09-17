@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "./client";
-import { courses, modules, departments, enrollments } from "./schema";
+import { courses, modules, departments, enrollments, courseAssignments } from "./schema";
 import { isUuid } from "@/lib/api/errors";
 
 export interface RealCourseSummary {
@@ -77,11 +77,25 @@ export async function listPublishedCourses(): Promise<RealCourseSummary[]> {
   return rows.map(toSummary);
 }
 
+/**
+ * A course only shows up here while the learner still has a live
+ * course_assignments row for it - inner-joining on it (rather than just
+ * reading enrollments) is what makes unassigning a course, whether directly
+ * or by removing it from the learner's department, immediately drop it off
+ * their course list and dashboard. The enrollment row itself is left alone
+ * by unassignCourse/unassignCourseFromDepartment on purpose, so a learner's
+ * progress history isn't lost - it just stops being surfaced here until
+ * they're assigned the course again.
+ */
 export async function listEnrolledPublishedCourses(userId: string): Promise<RealCourseSummary[]> {
   const rows = await db
     .select(courseSummaryColumns)
     .from(enrollments)
     .innerJoin(courses, eq(courses.id, enrollments.courseId))
+    .innerJoin(
+      courseAssignments,
+      and(eq(courseAssignments.userId, enrollments.userId), eq(courseAssignments.courseId, enrollments.courseId))
+    )
     .leftJoin(modules, eq(modules.courseId, courses.id))
     .leftJoin(departments, eq(departments.id, courses.departmentId))
     .where(and(eq(enrollments.userId, userId), eq(courses.status, "published")))

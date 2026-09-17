@@ -9,7 +9,7 @@ import {
   getCourseForBuilder,
 } from "./queries";
 import { db } from "./client";
-import { courses, modules, moduleVersions, departments, enrollments, users } from "./schema";
+import { courses, modules, moduleVersions, departments, enrollments, users, courseAssignments } from "./schema";
 
 describe("listRealCourses", () => {
   const courseCode = `QUERIES-TEST-${randomUUID()}`;
@@ -269,7 +269,7 @@ describe("listPublishedCourses", () => {
 });
 
 describe("listEnrolledPublishedCourses", () => {
-  it("only returns published courses the user is enrolled in", async () => {
+  it("only returns published courses the user is currently assigned", async () => {
     const [user] = await db
       .insert(users)
       .values({ email: `enrolled-list-${randomUUID()}@example.com`, displayName: "Enrolled List Test" })
@@ -283,15 +283,46 @@ describe("listEnrolledPublishedCourses", () => {
       .values({ code: `NOTENROLLED-${randomUUID()}`, title: "Not Enrolled Course", status: "published" })
       .returning();
     await db.insert(enrollments).values({ userId: user.id, courseId: enrolledCourse.id });
+    await db.insert(courseAssignments).values({ userId: user.id, courseId: enrolledCourse.id });
 
     try {
       const result = await listEnrolledPublishedCourses(user.id);
       expect(result.map((c) => c.id)).toEqual([enrolledCourse.id]);
       expect(result.map((c) => c.id)).not.toContain(notEnrolledCourse.id);
     } finally {
+      await db.delete(courseAssignments).where(eq(courseAssignments.userId, user.id));
       await db.delete(enrollments).where(eq(enrollments.userId, user.id));
       await db.delete(courses).where(eq(courses.id, enrolledCourse.id));
       await db.delete(courses).where(eq(courses.id, notEnrolledCourse.id));
+      await db.delete(users).where(eq(users.id, user.id));
+    }
+  });
+
+  it("stops returning a course once its assignment is removed, even though the enrollment (and any progress) stays", async () => {
+    const [user] = await db
+      .insert(users)
+      .values({ email: `enrolled-list-unassign-${randomUUID()}@example.com`, displayName: "Unassign List Test" })
+      .returning();
+    const [course] = await db
+      .insert(courses)
+      .values({ code: `UNASSIGNED-${randomUUID()}`, title: "Unassigned Course", status: "published" })
+      .returning();
+    await db.insert(enrollments).values({ userId: user.id, courseId: course.id, status: "in_progress" });
+    await db.insert(courseAssignments).values({ userId: user.id, courseId: course.id });
+
+    try {
+      expect((await listEnrolledPublishedCourses(user.id)).map((c) => c.id)).toEqual([course.id]);
+
+      // Simulate unassignCourse: removes the assignment, leaves the enrollment.
+      await db.delete(courseAssignments).where(eq(courseAssignments.userId, user.id));
+
+      expect(await listEnrolledPublishedCourses(user.id)).toEqual([]);
+      const [enrollment] = await db.select().from(enrollments).where(eq(enrollments.userId, user.id));
+      expect(enrollment.status).toBe("in_progress");
+    } finally {
+      await db.delete(courseAssignments).where(eq(courseAssignments.userId, user.id));
+      await db.delete(enrollments).where(eq(enrollments.userId, user.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
       await db.delete(users).where(eq(users.id, user.id));
     }
   });
