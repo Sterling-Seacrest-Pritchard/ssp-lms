@@ -89,15 +89,15 @@
     {
       "idx": 12,
       "version": "7",
-      "when": 1789582290864,
-      "tag": "0013_quiz_module",
+      "when": 1789600000000,
+      "tag": "0013_module_attempts_attempt_number_unique",
       "breakpoints": true
     },
     {
       "idx": 13,
       "version": "7",
-      "when": 1789600000000,
-      "tag": "0014_module_attempts_attempt_number_unique",
+      "when": 1789582290864,
+      "tag": "0014_quiz_module",
       "breakpoints": true
     }
   ]
