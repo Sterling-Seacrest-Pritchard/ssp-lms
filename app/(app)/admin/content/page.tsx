@@ -17,7 +17,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { courses as mockCourses } from "@/lib/mock-data/courses";
 import type { RealCourseSummary } from "@/lib/db/queries";
 
 export default function ContentAuthoringPage() {
@@ -124,14 +123,18 @@ export default function ContentAuthoringPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {realCourses.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                    No courses yet — create one to get started.
+                  </TableCell>
+                </TableRow>
+              )}
               {realCourses.map((course) => (
                 <TableRow key={course.id}>
                   <TableCell className="font-medium">
                     <span className="flex items-center gap-2">
                       {course.title}
-                      <Badge variant="secondary" className="text-[10px]">
-                        Live
-                      </Badge>
                       <Badge
                         variant={course.status === "published" ? "secondary" : "outline"}
                         className="text-[10px]"
@@ -157,25 +160,6 @@ export default function ContentAuthoringPage() {
                         Edit
                       </Button>
                     </Link>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {mockCourses.map((course) => (
-                <TableRow key={course.id}>
-                  <TableCell className="font-medium">{course.title}</TableCell>
-                  <TableCell>{course.department}</TableCell>
-                  <TableCell>{course.modules.length}</TableCell>
-                  <TableCell>
-                    {course.compliance ? (
-                      <Badge variant="secondary">Required</Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm">
-                      Edit
-                    </Button>
                   </TableCell>
                 </TableRow>
               ))}

@@ -11,9 +11,36 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { courses, currentUser } from "@/lib/mock-data/courses";
+import { currentUser } from "@/lib/mock-data/courses";
 import { updates, type UpdateType } from "@/lib/mock-data/updates";
+import { listEnrolledPublishedCourses, type RealCourseSummary } from "@/lib/db/queries";
+import { getCourseProgressForLearner } from "@/lib/scorm/course-progress";
+import { getUserIdByEmail } from "@/lib/db/users";
 import { auth } from "@/auth";
+
+interface DashboardCourse {
+  id: string;
+  title: string;
+  department: string;
+  thumbnail: string;
+  compliance: boolean;
+  dueDate: string | null;
+  progress: number;
+}
+
+const THUMBNAIL_ROTATION = [
+  "bg-gradient-to-br from-blue-500 to-indigo-600",
+  "bg-gradient-to-br from-emerald-500 to-teal-600",
+  "bg-gradient-to-br from-violet-500 to-purple-600",
+  "bg-gradient-to-br from-rose-500 to-orange-500",
+  "bg-gradient-to-br from-amber-500 to-yellow-500",
+];
+
+function autoThumbnailFor(courseId: string): string {
+  let hash = 0;
+  for (const char of courseId) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return THUMBNAIL_ROTATION[hash % THUMBNAIL_ROTATION.length];
+}
 
 const updateIcon: Record<UpdateType, typeof Bell> = {
   "due-soon": CalendarClock,
@@ -31,13 +58,38 @@ export default async function HomePage() {
   const session = await auth();
   const displayName = session?.user?.name ?? currentUser.name;
 
-  const activeCourses = courses
-    .filter((c) => c.status !== "completed")
+  let dashboardCourses: DashboardCourse[] = [];
+  try {
+    const userEmail = session?.user?.email;
+    const userId = userEmail ? await getUserIdByEmail(userEmail) : null;
+    if (userId) {
+      const published: RealCourseSummary[] = await listEnrolledPublishedCourses(userId);
+      dashboardCourses = await Promise.all(
+        published.map(async (course) => {
+          const { status, progress } = await getCourseProgressForLearner(course.id, userId);
+          return {
+            id: course.id,
+            title: course.title,
+            department: course.department ?? "General",
+            thumbnail: course.thumbnail ?? autoThumbnailFor(course.id),
+            compliance: course.compliance,
+            dueDate: course.dueDate,
+            progress: status === "completed" ? 100 : progress,
+          };
+        })
+      );
+    }
+  } catch {
+    // If the DB is unreachable, render an empty dashboard rather than erroring the page.
+  }
+
+  const activeCourses = dashboardCourses
+    .filter((c) => c.progress < 100)
     .sort((a, b) => b.progress - a.progress)
     .slice(0, 3);
 
-  const dueSoonCount = courses.filter(
-    (c) => c.dueDate && c.status !== "completed"
+  const dueSoonCount = dashboardCourses.filter(
+    (c) => c.dueDate && c.progress < 100
   ).length;
 
   return (
@@ -108,7 +160,7 @@ export default async function HomePage() {
                     <Progress value={course.progress} />
                     <span className="text-xs text-muted-foreground">
                       {course.progress}% complete
-                      {course.dueDate ? ` · Due ${course.dueDate}` : ""}
+                      {course.dueDate ? ` · Due ${course.dueDate.slice(0, 10)}` : ""}
                     </span>
                   </CardContent>
                 </Card>

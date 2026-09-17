@@ -3,7 +3,6 @@ import { ShieldCheck, CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { courses } from "@/lib/mock-data/courses";
 import { listEnrolledPublishedCourses, type RealCourseSummary } from "@/lib/db/queries";
 import { getUserIdByEmail } from "@/lib/db/users";
 import { getCourseProgressForLearner } from "@/lib/scorm/course-progress";
@@ -48,9 +47,6 @@ interface RenderableCourse {
 }
 
 export default async function CoursesPage() {
-  const mockActive = courses.filter((c) => c.status !== "completed");
-  const mockFinished = courses.filter((c) => c.status === "completed");
-
   let realCourses: RenderableCourse[] = [];
   try {
     const session = await auth();
@@ -76,16 +72,11 @@ export default async function CoursesPage() {
       );
     }
   } catch {
-    // Real courses are additive; if the DB is unreachable, still render the mock sections.
+    // If the DB is unreachable, render empty sections rather than erroring the page.
   }
 
-  const realActive = realCourses.filter((c) => c.status !== "completed");
-  const realFinished = realCourses.filter((c) => c.status === "completed");
-  const active: Array<(typeof courses)[number] | RenderableCourse> = [...mockActive, ...realActive];
-  const finished: Array<(typeof courses)[number] | RenderableCourse> = [
-    ...mockFinished,
-    ...realFinished,
-  ];
+  const active = realCourses.filter((c) => c.status !== "completed");
+  const finished = realCourses.filter((c) => c.status === "completed");
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-10">
@@ -118,11 +109,6 @@ export default async function CoursesPage() {
                     <p className="text-xs text-muted-foreground">{course.department}</p>
                   </CardHeader>
                   <CardContent className="flex flex-col gap-3">
-                    {"description" in course && (
-                      <p className="line-clamp-2 text-sm text-muted-foreground">
-                        {course.description}
-                      </p>
-                    )}
                     <div className="flex items-center justify-between">
                       <Badge variant={statusVariant[course.status]}>
                         {statusLabel[course.status]}
@@ -156,8 +142,7 @@ export default async function CoursesPage() {
                     <div className="flex-1">
                       <p className="text-sm font-medium">{course.title}</p>
                       <p className="text-xs text-muted-foreground">
-                        {course.department} &middot;{" "}
-                        {"modules" in course ? course.modules.length : course.moduleCount} modules
+                        {course.department} &middot; {course.moduleCount} modules
                       </p>
                     </div>
                     {course.compliance && <Badge variant="secondary">Compliance</Badge>}
