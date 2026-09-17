@@ -156,6 +156,42 @@ describe("computeLiveCourseProgress", () => {
     }
   });
 
+  it("treats a quiz module with a completed attempt as finished (isModuleFinishedForUser quiz branch)", async () => {
+    const [course] = await db
+      .insert(courses)
+      .values({ code: `${courseCode}-quiz`, title: "Course Progress Quiz Test", status: "published" })
+      .returning();
+    const [mod] = await db
+      .insert(modules)
+      .values({ courseId: course.id, moduleType: "quiz", title: "Quiz Module" })
+      .returning();
+    const [version] = await db
+      .insert(moduleVersions)
+      .values({ moduleId: mod.id, versionNumber: 1, status: "published" })
+      .returning();
+    await db.update(modules).set({ currentVersionId: version.id }).where(eq(modules.id, mod.id));
+    const [attempt] = await db
+      .insert(moduleAttempts)
+      .values({ moduleVersionId: version.id, userId, attemptNumber: 1, status: "completed" })
+      .returning();
+
+    try {
+      const result = await computeLiveCourseProgress(course.id, userId);
+
+      // Before the fix, isModuleFinishedForUser fell through to the
+      // SCORM-style getLatestLessonStatus check for "quiz", which always
+      // returned null (no scorm_attempt_state row for a quiz attempt), so
+      // this module was never seen as finished.
+      expect(result).toEqual({ status: "completed", progress: 100 });
+    } finally {
+      await db.delete(moduleAttempts).where(eq(moduleAttempts.id, attempt.id));
+      await db.update(modules).set({ currentVersionId: null }).where(eq(modules.id, mod.id));
+      await db.delete(moduleVersions).where(eq(moduleVersions.id, version.id));
+      await db.delete(modules).where(eq(modules.id, mod.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+    }
+  });
+
   it("does not ignore an unfinished video module - only the SCORM module being done leaves it in-progress", async () => {
     const [course] = await db
       .insert(courses)

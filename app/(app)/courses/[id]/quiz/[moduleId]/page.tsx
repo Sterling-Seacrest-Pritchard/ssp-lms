@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/lib/db/client";
 import { eq } from "drizzle-orm";
@@ -11,6 +11,7 @@ import { isAdminRole } from "@/lib/roles";
 import { QuizPlayer } from "@/components/quiz/quiz-player";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { isNextNotFoundError } from "@/lib/utils";
+import { isUuid } from "@/lib/api/errors";
 
 export default async function LearnerQuizPage(
   props: PageProps<"/courses/[id]/quiz/[moduleId]">
@@ -24,6 +25,9 @@ export default async function LearnerQuizPage(
   }
   const userId = await getUserIdByEmail(userEmail);
   if (!userId) {
+    notFound();
+  }
+  if (!isUuid(moduleId)) {
     notFound();
   }
 
@@ -48,15 +52,11 @@ export default async function LearnerQuizPage(
     }
 
     const quizStatus = await getLatestQuizStatus(moduleId, userId);
-    if (quizStatus === "completed" || quizStatus === "failed") {
+    if (quizStatus === "completed") {
       return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center">
-          {quizStatus === "completed" ? (
-            <CheckCircle2 className="h-10 w-10 text-emerald-600" />
-          ) : (
-            <XCircle className="h-10 w-10 text-destructive" />
-          )}
-          <p className="text-lg font-medium">{quizStatus === "completed" ? "Quiz passed" : "Quiz not passed"}</p>
+          <CheckCircle2 className="h-10 w-10 text-emerald-600" />
+          <p className="text-lg font-medium">Quiz passed</p>
           <p className="text-sm text-muted-foreground">You&apos;ve already completed this quiz.</p>
         </div>
       );
@@ -84,6 +84,10 @@ export default async function LearnerQuizPage(
         return { id: question.id, prompt: question.prompt, questionType: question.questionType, choices };
       })
     );
+
+    if (questionsWithChoices.length === 0) {
+      return <UnavailableState message="This quiz isn't ready yet. Please check back later." />;
+    }
 
     return <QuizPlayer moduleVersionId={moduleId} questions={questionsWithChoices} />;
   } catch (err) {
