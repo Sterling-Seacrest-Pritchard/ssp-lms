@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { getDepartmentWithMembers, listUsersNotInDepartment } from "@/lib/db/departments";
 import { RosterClient } from "./roster-client";
+import { DepartmentCoursesClient } from "./department-courses-client";
 
 export default async function DepartmentDetailPage(
   props: PageProps<"/admin/org/departments/[id]">
@@ -42,6 +43,15 @@ export default async function DepartmentDetailPage(
         </CardHeader>
         <CardContent>
           <RosterClient departmentId={department.id} members={department.members} eligibleUsers={eligibleUsers} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Courses</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DepartmentCoursesClient departmentId={department.id} />
         </CardContent>
       </Card>
     </div>

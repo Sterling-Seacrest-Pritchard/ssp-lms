@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { clearUserDepartment, setUserDepartment } from "@/lib/db/departments";
+import { assignDepartmentCoursesToUser } from "@/lib/db/department-course-assignments";
 import { badRequest, isUuid, serverError } from "@/lib/api/errors";
 
 async function parseParams(
@@ -28,6 +29,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (parsed instanceof NextResponse) return parsed;
 
     await setUserDepartment(parsed.userId, parsed.departmentId);
+    await assignDepartmentCoursesToUser(parsed.userId, parsed.departmentId);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return serverError(error);

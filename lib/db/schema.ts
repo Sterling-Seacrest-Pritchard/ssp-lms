@@ -52,6 +52,18 @@ export const courseAssignments = pgTable(
   (table) => [unique().on(table.courseId, table.userId)]
 );
 
+export const departmentCourseAssignments = pgTable(
+  "department_course_assignments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    departmentId: uuid("department_id").notNull().references(() => departments.id),
+    courseId: uuid("course_id").notNull().references(() => courses.id),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
+    assignedBy: text("assigned_by"),
+  },
+  (table) => [unique().on(table.departmentId, table.courseId)]
+);
+
 export const enrollments = pgTable(
   "enrollments",
   {

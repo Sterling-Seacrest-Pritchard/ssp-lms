@@ -4,7 +4,8 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { PATCH, DELETE } from "./route";
 import { db } from "@/lib/db/client";
-import { departments, users } from "@/lib/db/schema";
+import { departments, users, courses, courseAssignments, departmentCourseAssignments, enrollments } from "@/lib/db/schema";
+import { assignCourseToDepartment } from "@/lib/db/department-course-assignments";
 
 async function makeDeptAndUser() {
   const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
@@ -41,6 +42,35 @@ describe("PATCH /api/admin/departments/[id]/members", () => {
     });
     const response = await PATCH(request, { params: Promise.resolve({ id: "not-a-uuid" }) });
     expect(response.status).toBe(400);
+  });
+
+  it("auto-assigns every course already assigned to the department to the newly-added user", async () => {
+    const { dept, user } = await makeDeptAndUser();
+    const [course] = await db.insert(courses).values({ code: `MEMBER-JOIN-${randomUUID()}`, title: "x" }).returning();
+    try {
+      await assignCourseToDepartment(course.id, dept.id, "admin@example.com");
+
+      const request = new NextRequest(`http://localhost/api/admin/departments/${dept.id}/members`, {
+        method: "PATCH",
+        body: JSON.stringify({ userId: user.id }),
+      });
+      const response = await PATCH(request, { params: Promise.resolve({ id: dept.id }) });
+      expect(response.status).toBe(200);
+
+      const [assignment] = await db
+        .select()
+        .from(courseAssignments)
+        .where(eq(courseAssignments.userId, user.id));
+      expect(assignment).toBeDefined();
+      expect(assignment.courseId).toBe(course.id);
+    } finally {
+      await db.delete(enrollments).where(eq(enrollments.courseId, course.id));
+      await db.delete(courseAssignments).where(eq(courseAssignments.courseId, course.id));
+      await db.delete(departmentCourseAssignments).where(eq(departmentCourseAssignments.departmentId, dept.id));
+      await db.delete(users).where(eq(users.id, user.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+      await db.delete(departments).where(eq(departments.id, dept.id));
+    }
   });
 });
 
