@@ -5,6 +5,9 @@ import { CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { ModuleNavBar } from "@/components/course/module-nav-bar";
+import { NextModuleButton } from "@/components/course/next-module-button";
+import type { AdjacentModule } from "@/lib/db/module-navigation";
 
 type QuizQuestion = {
   id: string;
@@ -16,9 +19,13 @@ type QuizQuestion = {
 export function QuizPlayer({
   moduleVersionId,
   questions,
+  courseId,
+  next,
 }: {
   moduleVersionId: string;
   questions: QuizQuestion[];
+  courseId: string;
+  next: AdjacentModule | null;
 }) {
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -90,20 +97,29 @@ export function QuizPlayer({
 
   if (result) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center">
-        {result.passed ? (
-          <CheckCircle2 className="h-10 w-10 text-emerald-600" />
-        ) : (
-          <XCircle className="h-10 w-10 text-destructive" />
-        )}
-        <p className="text-lg font-medium">{result.passed ? "Quiz passed" : "Quiz not passed"}</p>
-        <p className="text-sm text-muted-foreground">Score: {result.percentage}%</p>
+      <div className="flex h-full w-full flex-col gap-3">
+        <ModuleNavBar courseId={courseId} isComplete={result.passed} />
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
+          {result.passed ? (
+            <CheckCircle2 className="h-10 w-10 text-emerald-600" />
+          ) : (
+            <XCircle className="h-10 w-10 text-destructive" />
+          )}
+          <p className="text-lg font-medium">{result.passed ? "Quiz passed" : "Quiz not passed"}</p>
+          <p className="text-sm text-muted-foreground">Score: {result.percentage}%</p>
+          {result.passed && <NextModuleButton courseId={courseId} next={next} />}
+        </div>
       </div>
     );
   }
 
   if (error) {
-    return <p className="text-sm text-destructive">{error}</p>;
+    return (
+      <div className="flex flex-col gap-3">
+        <ModuleNavBar courseId={courseId} isComplete={false} />
+        <p className="text-sm text-destructive">{error}</p>
+      </div>
+    );
   }
 
   if (!attemptId) {
@@ -116,6 +132,7 @@ export function QuizPlayer({
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
+      <ModuleNavBar courseId={courseId} isComplete={false} />
       {questions.map((question) => (
         <Card key={question.id}>
           <CardHeader>

@@ -7,6 +7,9 @@ import { getUserIdByEmail } from "@/lib/db/users";
 import { getEnrollmentId } from "@/lib/db/enrollments";
 import { signPlaybackToken } from "@/lib/video/mux-client";
 import { MuxVideoPlayer } from "@/components/video/mux-video-player";
+import { ModuleNavBar } from "@/components/course/module-nav-bar";
+import { NextModuleButton } from "@/components/course/next-module-button";
+import { getAdjacentModules } from "@/lib/db/module-navigation";
 import { isAdminRole } from "@/lib/roles";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { isNextNotFoundError } from "@/lib/utils";
@@ -42,15 +45,21 @@ export default async function VideoPage(props: PageProps<"/courses/[id]/video/[m
       }
     }
 
+    const { next } = await getAdjacentModules(id, moduleId);
+
     const status = await getLatestVideoStatus(moduleId, userId);
     if (status === "completed") {
       return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center">
-          <CheckCircle2 className="h-10 w-10 text-emerald-600" />
-          <p className="text-lg font-medium">Video complete</p>
-          <p className="text-sm text-muted-foreground">
-            You&apos;ve already completed this video.
-          </p>
+        <div className="flex h-full w-full flex-col gap-3">
+          <ModuleNavBar courseId={id} isComplete={true} />
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+            <CheckCircle2 className="h-10 w-10 text-emerald-600" />
+            <p className="text-lg font-medium">Video complete</p>
+            <p className="text-sm text-muted-foreground">
+              You&apos;ve already completed this video.
+            </p>
+            <NextModuleButton courseId={id} next={next} />
+          </div>
         </div>
       );
     }
@@ -65,6 +74,8 @@ export default async function VideoPage(props: PageProps<"/courses/[id]/video/[m
           durationSeconds={info.durationSeconds}
           moduleVersionId={moduleId}
           initialFurthestWatchedSeconds={0}
+          courseId={id}
+          next={next}
         />
       </div>
     );

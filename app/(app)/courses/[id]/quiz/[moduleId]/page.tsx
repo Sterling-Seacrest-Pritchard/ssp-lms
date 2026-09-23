@@ -9,6 +9,9 @@ import { getUserIdByEmail } from "@/lib/db/users";
 import { getEnrollmentId } from "@/lib/db/enrollments";
 import { isAdminRole } from "@/lib/roles";
 import { QuizPlayer } from "@/components/quiz/quiz-player";
+import { ModuleNavBar } from "@/components/course/module-nav-bar";
+import { NextModuleButton } from "@/components/course/next-module-button";
+import { getAdjacentModules } from "@/lib/db/module-navigation";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { isNextNotFoundError } from "@/lib/utils";
 import { isUuid } from "@/lib/api/errors";
@@ -51,13 +54,19 @@ export default async function LearnerQuizPage(
       }
     }
 
+    const { next } = await getAdjacentModules(courseId, moduleId);
+
     const quizStatus = await getLatestQuizStatus(moduleId, userId);
     if (quizStatus === "completed") {
       return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center">
-          <CheckCircle2 className="h-10 w-10 text-emerald-600" />
-          <p className="text-lg font-medium">Quiz passed</p>
-          <p className="text-sm text-muted-foreground">You&apos;ve already completed this quiz.</p>
+        <div className="flex h-full w-full flex-col gap-3">
+          <ModuleNavBar courseId={courseId} isComplete={true} />
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+            <CheckCircle2 className="h-10 w-10 text-emerald-600" />
+            <p className="text-lg font-medium">Quiz passed</p>
+            <p className="text-sm text-muted-foreground">You&apos;ve already completed this quiz.</p>
+            <NextModuleButton courseId={courseId} next={next} />
+          </div>
         </div>
       );
     }
@@ -89,7 +98,7 @@ export default async function LearnerQuizPage(
       return <UnavailableState message="This quiz isn't ready yet. Please check back later." />;
     }
 
-    return <QuizPlayer moduleVersionId={moduleId} questions={questionsWithChoices} />;
+    return <QuizPlayer moduleVersionId={moduleId} questions={questionsWithChoices} courseId={courseId} next={next} />;
   } catch (err) {
     if (isNextNotFoundError(err)) {
       throw err;

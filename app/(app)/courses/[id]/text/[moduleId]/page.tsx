@@ -9,6 +9,9 @@ import { getUserIdByEmail } from "@/lib/db/users";
 import { getEnrollmentId } from "@/lib/db/enrollments";
 import { isAdminRole } from "@/lib/roles";
 import { TextReader } from "@/components/text/text-reader";
+import { ModuleNavBar } from "@/components/course/module-nav-bar";
+import { NextModuleButton } from "@/components/course/next-module-button";
+import { getAdjacentModules } from "@/lib/db/module-navigation";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { isNextNotFoundError } from "@/lib/utils";
 import { isUuid } from "@/lib/api/errors";
@@ -51,13 +54,19 @@ export default async function LearnerTextPage(
       }
     }
 
+    const { next } = await getAdjacentModules(courseId, moduleId);
+
     const textStatus = await getLatestTextStatus(moduleId, userId);
     if (textStatus === "completed") {
       return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center">
-          <CheckCircle2 className="h-10 w-10 text-emerald-600" />
-          <p className="text-lg font-medium">Marked complete</p>
-          <p className="text-sm text-muted-foreground">You&apos;ve already completed this reading.</p>
+        <div className="flex h-full w-full flex-col gap-3">
+          <ModuleNavBar courseId={courseId} isComplete={true} />
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+            <CheckCircle2 className="h-10 w-10 text-emerald-600" />
+            <p className="text-lg font-medium">Marked complete</p>
+            <p className="text-sm text-muted-foreground">You&apos;ve already completed this reading.</p>
+            <NextModuleButton courseId={courseId} next={next} />
+          </div>
         </div>
       );
     }
@@ -70,7 +79,7 @@ export default async function LearnerTextPage(
       return <UnavailableState message="This reading isn't ready yet. Please check back later." />;
     }
 
-    return <TextReader moduleVersionId={moduleId} body={textVersion.body} />;
+    return <TextReader moduleVersionId={moduleId} body={textVersion.body} courseId={courseId} next={next} />;
   } catch (err) {
     if (isNextNotFoundError(err)) {
       throw err;

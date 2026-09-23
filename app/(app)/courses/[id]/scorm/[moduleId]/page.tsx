@@ -7,6 +7,9 @@ import { getUserIdByEmail } from "@/lib/db/users";
 import { getEnrollmentId } from "@/lib/db/enrollments";
 import { isAdminRole } from "@/lib/roles";
 import { ScormPlayer } from "@/components/scorm/scorm-player";
+import { ModuleNavBar } from "@/components/course/module-nav-bar";
+import { NextModuleButton } from "@/components/course/next-module-button";
+import { getAdjacentModules } from "@/lib/db/module-navigation";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { isNextNotFoundError } from "@/lib/utils";
 
@@ -27,7 +30,7 @@ export default async function LearnerScormPage(
     notFound();
   }
 
-  let info, lessonStatus;
+  let info, lessonStatus, next;
   try {
     info = await getScormLaunchInfo(moduleId);
     // Check enrollment against the module's OWN resolved courseId, never the
@@ -48,6 +51,7 @@ export default async function LearnerScormPage(
     // so relaunching one is a dead end. Show a finished state instead of
     // creating another attempt and loading the content again.
     lessonStatus = await getLatestLessonStatus(moduleId, userId);
+    next = (await getAdjacentModules(courseId, moduleId)).next;
   } catch (err) {
     if (isNextNotFoundError(err)) {
       throw err;
@@ -57,12 +61,16 @@ export default async function LearnerScormPage(
 
   if (lessonStatus && FINISHED_STATUSES.has(lessonStatus)) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center">
-        <CheckCircle2 className="h-10 w-10 text-emerald-600" />
-        <p className="text-lg font-medium">Module complete</p>
-        <p className="text-sm text-muted-foreground">
-          You&apos;ve already completed this module.
-        </p>
+      <div className="flex h-full w-full flex-col gap-3">
+        <ModuleNavBar courseId={courseId} isComplete={true} />
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+          <CheckCircle2 className="h-10 w-10 text-emerald-600" />
+          <p className="text-lg font-medium">Module complete</p>
+          <p className="text-sm text-muted-foreground">
+            You&apos;ve already completed this module.
+          </p>
+          <NextModuleButton courseId={courseId} next={next} />
+        </div>
       </div>
     );
   }
@@ -75,6 +83,8 @@ export default async function LearnerScormPage(
         moduleVersionId={moduleId}
         contentUrl={contentUrl}
         scormVersion={info.scormVersion}
+        courseId={courseId}
+        next={next}
       />
     </div>
   );

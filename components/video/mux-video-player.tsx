@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import MuxPlayer from "@mux/mux-player-react";
 import { CheckCircle2 } from "lucide-react";
+import { ModuleNavBar } from "@/components/course/module-nav-bar";
+import { NextModuleButton } from "@/components/course/next-module-button";
+import type { AdjacentModule } from "@/lib/db/module-navigation";
 
 const TOLERANCE_SECONDS = 3;
 const COMMIT_INTERVAL_MS = 15_000;
@@ -13,6 +16,8 @@ export function MuxVideoPlayer({
   durationSeconds,
   moduleVersionId,
   initialFurthestWatchedSeconds,
+  courseId,
+  next,
 }: {
   /**
    * The raw Mux playback id. Required - `@mux/mux-player` builds the video
@@ -27,6 +32,8 @@ export function MuxVideoPlayer({
   durationSeconds: number;
   moduleVersionId: string;
   initialFurthestWatchedSeconds: number;
+  courseId: string;
+  next: AdjacentModule | null;
 }) {
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const [completed, setCompleted] = useState(false);
@@ -89,20 +96,30 @@ export function MuxVideoPlayer({
   }, [attemptId]);
 
   if (error) {
-    return <p className="text-sm text-destructive">{error}</p>;
+    return (
+      <div className="flex flex-col gap-3">
+        <ModuleNavBar courseId={courseId} isComplete={false} />
+        <p className="text-sm text-destructive">{error}</p>
+      </div>
+    );
   }
 
   if (completed) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center">
-        <CheckCircle2 className="h-10 w-10 text-emerald-600" />
-        <p className="text-lg font-medium">Video complete</p>
+      <div className="flex h-full w-full flex-col gap-3">
+        <ModuleNavBar courseId={courseId} isComplete={true} />
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+          <CheckCircle2 className="h-10 w-10 text-emerald-600" />
+          <p className="text-lg font-medium">Video complete</p>
+          <NextModuleButton courseId={courseId} next={next} />
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-2">
+      <ModuleNavBar courseId={courseId} isComplete={false} />
       <MuxPlayer
         ref={playerRef}
         playbackId={playbackId}

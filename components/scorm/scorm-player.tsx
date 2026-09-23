@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Maximize2, Minimize2, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { useScormRuntime } from "@/lib/scorm/use-scorm-runtime";
 import { Button } from "@/components/ui/button";
+import { ModuleNavBar } from "@/components/course/module-nav-bar";
+import { NextModuleButton } from "@/components/course/next-module-button";
+import type { AdjacentModule } from "@/lib/db/module-navigation";
 
 const SUCCESS_STATUSES = new Set(["completed", "passed"]);
 
@@ -59,10 +62,14 @@ export function ScormPlayer({
   moduleVersionId,
   contentUrl,
   scormVersion,
+  courseId,
+  next,
 }: {
   moduleVersionId: string;
   contentUrl: string;
   scormVersion: string;
+  courseId: string;
+  next: AdjacentModule | null;
 }) {
   const { attemptId, lastStatus, error } = useScormRuntime(moduleVersionId, scormVersion);
   const isComplete = SUCCESS_STATUSES.has(lastStatus);
@@ -140,10 +147,14 @@ export function ScormPlayer({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
+      <ModuleNavBar courseId={courseId} isComplete={isComplete} />
       {isComplete && (
-        <div className="flex items-center gap-2 text-sm font-medium text-emerald-600">
-          <CheckCircle2 className="h-4 w-4" />
-          Module complete
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-emerald-600">
+            <CheckCircle2 className="h-4 w-4" />
+            Module complete
+          </div>
+          <NextModuleButton courseId={courseId} next={next} />
         </div>
       )}
       <div
