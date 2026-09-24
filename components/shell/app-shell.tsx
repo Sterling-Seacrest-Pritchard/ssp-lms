@@ -13,6 +13,7 @@ import {
   BarChart3,
   Users,
   Settings,
+  GraduationCap,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -37,31 +38,42 @@ const learnerNav = [
   { href: "/courses", label: "Courses", icon: BookOpen },
 ];
 
-const adminNav = [
+const orgAdminNav = [
   { href: "/admin", label: "Home", icon: Home },
   { href: "/admin/content", label: "Content Authoring", icon: BookOpen },
   { href: "/admin/videos", label: "Video Library", icon: Video },
   { href: "/admin/reports", label: "Reports", icon: BarChart3 },
   { href: "/admin/org", label: "Org Admin", icon: Users },
+  { href: "/courses", label: "Courses", icon: GraduationCap },
+];
+
+const departmentAdminNav = [
+  { href: "/admin", label: "Home", icon: Home },
+  { href: "/admin/content", label: "Content Authoring", icon: BookOpen },
+  { href: "/admin/videos", label: "Video Library", icon: Video },
+  { href: "/admin/department", label: "Department", icon: Users },
+  { href: "/courses", label: "Courses", icon: GraduationCap },
 ];
 
 function homeFor(role: Role) {
-  return role === "Admin" ? "/admin" : "/";
+  return role === "Learner" ? "/" : "/admin";
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [testRole, setTestRole] = useState<Role | null>(null);
+  const [testRole, setTestRole] = useState<"Learner" | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { data: session, status } = useSession();
   const { resolvedTheme } = useTheme();
   const isAuthenticated = status === "authenticated";
   const real = isAuthenticated ? roleFromClaims(session?.user?.roles) : null;
-  const canOverrideRole = real?.role === "Admin";
-  // Even a stale localStorage value from before a role change can't self-escalate a non-admin.
-  const effectiveTestRole = canOverrideRole ? testRole : null;
+  const canOverrideRole = real?.role === "DepartmentAdmin" || real?.role === "OrgAdmin";
+  // Even a stale localStorage value from before a role change can't self-escalate a non-admin,
+  // and can't hand a Department Admin the Org Admin tier (or vice versa) - the only override
+  // this menu ever offers is "preview as Learner" vs "my real admin role."
+  const effectiveTestRole = canOverrideRole && testRole === "Learner" ? "Learner" : null;
   const role: Role = effectiveTestRole ?? real?.role ?? "Learner";
   const roleLabel = effectiveTestRole ?? real?.label ?? "Learner";
   const isTestOverride = effectiveTestRole !== null;
@@ -72,12 +84,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const storedCollapsed = localStorage.getItem("sidebar-collapsed");
     if (storedCollapsed) setCollapsed(storedCollapsed === "true");
     const storedTestRole = localStorage.getItem("test-role");
-    if (storedTestRole === "Learner" || storedTestRole === "Admin") {
+    if (storedTestRole === "Learner") {
       setTestRole(storedTestRole);
     }
   }, []);
 
-  const updateTestRole = (next: Role | null) => {
+  const updateTestRole = (next: "Learner" | null) => {
     setTestRole(next);
     if (next) {
       localStorage.setItem("test-role", next);
@@ -88,9 +100,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    // Landing on "/" as a real Admin (e.g. right after signing in) would otherwise show the
-    // Learner home page under the Admin nav — send them to their own home instead.
-    if (pathname === "/" && role === "Admin") {
+    // Landing on "/" as a real admin (either tier) would otherwise show the
+    // Learner home page under the admin nav - send them to their own home instead.
+    if (pathname === "/" && role !== "Learner") {
       router.replace("/admin");
     }
   }, [pathname, role, router]);
@@ -103,7 +115,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const navItems = role === "Learner" ? learnerNav : adminNav;
+  const navItems = role === "Learner" ? learnerNav : role === "OrgAdmin" ? orgAdminNav : departmentAdminNav;
   const displayName = session?.user?.name ?? currentUser.name;
   const avatarInitials = session?.user?.name
     ? getInitials(session.user.name)
@@ -205,9 +217,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <DropdownMenuContent align="start">
                   <DropdownMenuItem onClick={() => updateTestRole("Learner")}>
                     Learner
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => updateTestRole("Admin")}>
-                    Admin
                   </DropdownMenuItem>
                   {isTestOverride && (
                     <>
