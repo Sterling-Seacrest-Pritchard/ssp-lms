@@ -89,9 +89,14 @@ describe("POST /api/admin/departments/[id]/course-assignments", () => {
     }
   });
 
-  it("succeeds when a Department Admin passes their own department id", async () => {
+  it("succeeds when a Department Admin passes their own department id and their own department's course", async () => {
     const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
-    const [course] = await db.insert(courses).values({ code: `CA-${randomUUID()}`, title: "x" }).returning();
+    // The course itself must belong to this same department - a global
+    // (departmentId-null) course is deliberately NOT included here, since
+    // assignCourseAccess (added for I1) rejects those for a Department
+    // Admin the same way the course builder page does; see the dedicated
+    // "rejects ... a global course" test below for that case.
+    const [course] = await db.insert(courses).values({ code: `CA-${randomUUID()}`, title: "x", departmentId: dept.id }).returning();
     const admin = await makeDeptAdminOf(dept.id);
     vi.mocked(auth).mockResolvedValueOnce({
       user: { email: admin.email, roles: ["DepartmentAdmin"] },
@@ -113,6 +118,88 @@ describe("POST /api/admin/departments/[id]/course-assignments", () => {
       await db.delete(departmentAdmins).where(eq(departmentAdmins.userId, admin.id));
       await db.delete(users).where(eq(users.id, admin.id));
       await db.delete(courses).where(eq(courses.id, course.id));
+      await db.delete(departments).where(eq(departments.id, dept.id));
+    }
+  });
+
+  it("rejects a Department Admin pulling ANOTHER department's course into their own department's roster (I1)", async () => {
+    const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
+    const [otherDept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
+    const [otherCourse] = await db
+      .insert(courses)
+      .values({ code: `CA-OTHER-${randomUUID()}`, title: "Other Dept's Course", departmentId: otherDept.id })
+      .returning();
+    const admin = await makeDeptAdminOf(dept.id);
+    vi.mocked(auth).mockResolvedValueOnce({
+      user: { email: admin.email, roles: ["DepartmentAdmin"] },
+    } as never);
+    try {
+      const request = new NextRequest(`http://localhost/api/admin/departments/${dept.id}/course-assignments`, {
+        method: "POST",
+        body: JSON.stringify({ courseId: otherCourse.id }),
+      });
+      const response = await POST(request, { params: Promise.resolve({ id: dept.id }) });
+      expect(response.status).toBe(404);
+
+      expect(
+        await db.select().from(departmentCourseAssignments).where(eq(departmentCourseAssignments.departmentId, dept.id))
+      ).toHaveLength(0);
+    } finally {
+      await db.delete(departmentAdmins).where(eq(departmentAdmins.userId, admin.id));
+      await db.delete(users).where(eq(users.id, admin.id));
+      await db.delete(courses).where(eq(courses.id, otherCourse.id));
+      await db.delete(departments).where(eq(departments.id, dept.id));
+      await db.delete(departments).where(eq(departments.id, otherDept.id));
+    }
+  });
+
+  it("rejects a Department Admin assigning a global (departmentId-null) course to their department (chosen behavior - see report)", async () => {
+    const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
+    const [globalCourse] = await db.insert(courses).values({ code: `CA-GLOBAL-${randomUUID()}`, title: "Global Course" }).returning();
+    const admin = await makeDeptAdminOf(dept.id);
+    vi.mocked(auth).mockResolvedValueOnce({
+      user: { email: admin.email, roles: ["DepartmentAdmin"] },
+    } as never);
+    try {
+      const request = new NextRequest(`http://localhost/api/admin/departments/${dept.id}/course-assignments`, {
+        method: "POST",
+        body: JSON.stringify({ courseId: globalCourse.id }),
+      });
+      const response = await POST(request, { params: Promise.resolve({ id: dept.id }) });
+      expect(response.status).toBe(404);
+
+      expect(
+        await db.select().from(departmentCourseAssignments).where(eq(departmentCourseAssignments.departmentId, dept.id))
+      ).toHaveLength(0);
+    } finally {
+      await db.delete(departmentAdmins).where(eq(departmentAdmins.userId, admin.id));
+      await db.delete(users).where(eq(users.id, admin.id));
+      await db.delete(courses).where(eq(courses.id, globalCourse.id));
+      await db.delete(departments).where(eq(departments.id, dept.id));
+    }
+  });
+
+  it("allows an Org Admin to assign a global course to any department", async () => {
+    const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
+    const [globalCourse] = await db
+      .insert(courses)
+      .values({ code: `CA-GLOBAL-ORG-${randomUUID()}`, title: "Global Course" })
+      .returning();
+    try {
+      const request = new NextRequest(`http://localhost/api/admin/departments/${dept.id}/course-assignments`, {
+        method: "POST",
+        body: JSON.stringify({ courseId: globalCourse.id }),
+      });
+      const response = await POST(request, { params: Promise.resolve({ id: dept.id }) });
+      expect(response.status).toBe(200);
+
+      expect(
+        await db.select().from(departmentCourseAssignments).where(eq(departmentCourseAssignments.departmentId, dept.id))
+      ).toHaveLength(1);
+    } finally {
+      await db.delete(courseAssignments).where(eq(courseAssignments.courseId, globalCourse.id));
+      await db.delete(departmentCourseAssignments).where(eq(departmentCourseAssignments.departmentId, dept.id));
+      await db.delete(courses).where(eq(courses.id, globalCourse.id));
       await db.delete(departments).where(eq(departments.id, dept.id));
     }
   });

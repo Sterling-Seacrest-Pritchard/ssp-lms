@@ -46,17 +46,28 @@ export function adminForbiddenResponse(pathname: string, requestUrl: string): Ne
 
 /**
  * Does this path require the Org Admin tier specifically (not just any
- * admin)? Department creation, the top-level department list, and roster
- * membership changes are Org-Admin-exclusive; a department's OWN
- * course-assignment endpoint stays open to a Department Admin administering
- * that department - `requiresAdminRole` already gates the whole tree to
- * "some admin," and per-route/query scoping (not this function) decides
- * whose department they can act on. Roster membership (`/members`) is
- * listed explicitly here rather than matched by a `/api/admin/departments`
- * prefix, since that prefix would also (wrongly) catch `/course-assignments`.
+ * admin)? Department creation, the top-level department list, roster
+ * membership changes, the org-wide user directory/assignments, the Entra
+ * resync trigger, and the reports page are Org-Admin-exclusive; a
+ * department's OWN course-assignment endpoint stays open to a Department
+ * Admin administering that department - `requiresAdminRole` already gates
+ * the whole tree to "some admin," and per-route/query scoping (not this
+ * function) decides whose department they can act on. Roster membership
+ * (`/members`) is listed explicitly here rather than matched by a
+ * `/api/admin/departments` prefix, since that prefix would also (wrongly)
+ * catch `/course-assignments`.
+ *
+ * `/api/admin/users` (as a prefix) covers the company-wide directory GET,
+ * the per-user assignment GET/POST, and the per-user-per-course DELETE - all
+ * of which back the Org-Admin-only `/admin/org` page and were previously
+ * reachable by any admin tier via direct fetch, since only the page (not
+ * the routes) was gated.
  */
 export function requiresOrgAdminRole(pathname: string): boolean {
   if (isAtOrUnder(pathname, "/admin/org")) return true;
+  if (isAtOrUnder(pathname, "/admin/reports")) return true;
+  if (isAtOrUnder(pathname, "/api/admin/users")) return true;
+  if (pathname === "/api/admin/entra-sync") return true;
   if (pathname === "/api/admin/departments") return true;
   if (/^\/api\/admin\/departments\/[^/]+\/members$/.test(pathname)) return true;
   if (pathname === "/api/admin/department-admins") return true;

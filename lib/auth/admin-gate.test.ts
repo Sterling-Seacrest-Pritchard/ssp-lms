@@ -51,6 +51,26 @@ describe("requiresOrgAdminRole", () => {
     expect(requiresOrgAdminRole("/api/admin/department-admins/abc/def")).toBe(true);
   });
 
+  it("gates the org-wide user directory/assignments API and the Entra resync trigger", () => {
+    expect(requiresOrgAdminRole("/api/admin/users")).toBe(true);
+    expect(requiresOrgAdminRole("/api/admin/users/11111111-1111-1111-1111-111111111111/assignments")).toBe(true);
+    expect(
+      requiresOrgAdminRole(
+        "/api/admin/users/11111111-1111-1111-1111-111111111111/assignments/22222222-2222-2222-2222-222222222222"
+      )
+    ).toBe(true);
+    expect(requiresOrgAdminRole("/api/admin/entra-sync")).toBe(true);
+  });
+
+  it("does NOT gate the Entra cron sync route - it authenticates with a bearer secret, not a session", () => {
+    expect(requiresOrgAdminRole("/api/admin/entra-sync/cron")).toBe(false);
+  });
+
+  it("gates the reports page, per the spec's resolution that it stays Org-Admin-only", () => {
+    expect(requiresOrgAdminRole("/admin/reports")).toBe(true);
+    expect(requiresOrgAdminRole("/admin/reports/anything")).toBe(true);
+  });
+
   it("does NOT gate department-scoped actions a Department Admin should still reach", () => {
     expect(requiresOrgAdminRole("/api/admin/departments/abc/course-assignments")).toBe(false);
   });
