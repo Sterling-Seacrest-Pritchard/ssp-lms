@@ -47,6 +47,8 @@ describe("requiresOrgAdminRole", () => {
     expect(requiresOrgAdminRole("/admin/org/departments/abc")).toBe(true);
     expect(requiresOrgAdminRole("/api/admin/departments")).toBe(true);
     expect(requiresOrgAdminRole("/api/admin/departments/abc/members")).toBe(true);
+    expect(requiresOrgAdminRole("/api/admin/department-admins")).toBe(true);
+    expect(requiresOrgAdminRole("/api/admin/department-admins/abc/def")).toBe(true);
   });
 
   it("does NOT gate department-scoped actions a Department Admin should still reach", () => {

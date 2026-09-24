@@ -59,5 +59,7 @@ export function requiresOrgAdminRole(pathname: string): boolean {
   if (isAtOrUnder(pathname, "/admin/org")) return true;
   if (pathname === "/api/admin/departments") return true;
   if (/^\/api\/admin\/departments\/[^/]+\/members$/.test(pathname)) return true;
+  if (pathname === "/api/admin/department-admins") return true;
+  if (/^\/api\/admin\/department-admins\/[^/]+\/[^/]+$/.test(pathname)) return true;
   return false;
 }
