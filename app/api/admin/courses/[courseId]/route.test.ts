@@ -80,6 +80,71 @@ describe("PATCH /api/admin/courses/[courseId]", () => {
       await cleanupDepartmentAdmin(admin);
     }
   });
+
+  it("rejects a Department Admin trying to PATCH their own course's departmentId to null (global)", async () => {
+    const admin = await createDepartmentAdmin();
+    const { id } = await createDraftCourse("Owned Course", admin.departmentId);
+    vi.mocked(auth).mockResolvedValueOnce({
+      user: { email: admin.email, roles: ["DepartmentAdmin"] },
+    } as never);
+    try {
+      const request = new NextRequest(`http://localhost/api/admin/courses/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ departmentId: null }),
+      });
+      const response = await PATCH(request, { params: Promise.resolve({ courseId: id }) });
+      expect(response.status).toBe(400);
+
+      const [course] = await db.select().from(courses).where(eq(courses.id, id));
+      expect(course.departmentId).toBe(admin.departmentId);
+    } finally {
+      await db.delete(courses).where(eq(courses.id, id));
+      await cleanupDepartmentAdmin(admin);
+    }
+  });
+
+  it("rejects a Department Admin trying to PATCH their own course's departmentId to a department they don't administer", async () => {
+    const admin = await createDepartmentAdmin();
+    const { id } = await createDraftCourse("Owned Course", admin.departmentId);
+    const [otherDept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
+    vi.mocked(auth).mockResolvedValueOnce({
+      user: { email: admin.email, roles: ["DepartmentAdmin"] },
+    } as never);
+    try {
+      const request = new NextRequest(`http://localhost/api/admin/courses/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ departmentId: otherDept.id }),
+      });
+      const response = await PATCH(request, { params: Promise.resolve({ courseId: id }) });
+      expect(response.status).toBe(400);
+
+      const [course] = await db.select().from(courses).where(eq(courses.id, id));
+      expect(course.departmentId).toBe(admin.departmentId);
+    } finally {
+      await db.delete(courses).where(eq(courses.id, id));
+      await db.delete(departments).where(eq(departments.id, otherDept.id));
+      await cleanupDepartmentAdmin(admin);
+    }
+  });
+
+  it("allows an Org Admin to PATCH departmentId to null (global) freely", async () => {
+    const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
+    const { id } = await createDraftCourse("Org Admin Owned", dept.id);
+    try {
+      const request = new NextRequest(`http://localhost/api/admin/courses/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ departmentId: null }),
+      });
+      const response = await PATCH(request, { params: Promise.resolve({ courseId: id }) });
+      expect(response.status).toBe(200);
+
+      const [course] = await db.select().from(courses).where(eq(courses.id, id));
+      expect(course.departmentId).toBeNull();
+    } finally {
+      await db.delete(courses).where(eq(courses.id, id));
+      await db.delete(departments).where(eq(departments.id, dept.id));
+    }
+  });
 });
 
 describe("DELETE /api/admin/courses/[courseId]", () => {

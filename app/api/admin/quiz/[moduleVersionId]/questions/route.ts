@@ -4,10 +4,14 @@ import { db } from "@/lib/db/client";
 import { quizQuestions, quizChoices } from "@/lib/db/schema";
 import { addQuestion } from "@/lib/db/quiz-authoring";
 import { badRequest, serverError } from "@/lib/api/errors";
+import { assertModuleVersionAccess } from "@/lib/api/course-access";
 
 export async function GET(_request: NextRequest, props: { params: Promise<{ moduleVersionId: string }> }) {
   try {
     const { moduleVersionId } = await props.params;
+    const denied = await assertModuleVersionAccess(moduleVersionId);
+    if (denied) return denied;
+
     const questions = await db
       .select()
       .from(quizQuestions)
@@ -32,6 +36,9 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ modu
 export async function POST(request: NextRequest, props: { params: Promise<{ moduleVersionId: string }> }) {
   try {
     const { moduleVersionId } = await props.params;
+    const denied = await assertModuleVersionAccess(moduleVersionId);
+    if (denied) return denied;
+
     let body: unknown;
     try {
       body = await request.json();

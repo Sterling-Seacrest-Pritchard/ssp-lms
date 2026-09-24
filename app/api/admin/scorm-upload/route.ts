@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
+import { auth } from "@/auth";
 import { db } from "@/lib/db/client";
 import { courses, modules, moduleVersions, scormModuleVersions } from "@/lib/db/schema";
 import { parseManifest } from "@/lib/scorm/parse-manifest";
 import { readScormManifest, uploadScormPackage, assertLaunchFileExists } from "@/lib/scorm/extract-package";
 import { badRequest, isUuid, serverError } from "@/lib/api/errors";
+import { assertCourseAccess, resolveCourseCreationDepartmentId } from "@/lib/api/course-access";
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,17 +40,49 @@ export async function POST(request: NextRequest) {
     // Resolve (and validate) the attach-mode course BEFORE any Storage upload
     // happens: a nonexistent courseId is a 400, and per the same principle as
     // the manifest validation below, we must not write a package to Storage
-    // for a request we're about to reject.
+    // for a request we're about to reject. Also resolve create-mode's
+    // department scoping here, before the upload - never a client-supplied
+    // departmentId alone, and never silently global: this endpoint can mint
+    // a brand-new course exactly like POST /api/admin/courses can, so it
+    // must apply the same session-derived scoping.
     // Definite-assignment assertion: TS can't see across the two `if`s below,
     // but they exhaustively cover attachToExistingCourse true/false and each
     // either assigns `course` or returns early.
     let course!: typeof courses.$inferSelect;
+    let courseAlreadyResolved = false;
+    let newCourseDepartmentId: string | null = null;
     if (attachToExistingCourse) {
       const [existing] = await db.select().from(courses).where(eq(courses.id, courseId as string));
       if (!existing) {
         return badRequest("No course exists with that courseId");
       }
+      const denied = await assertCourseAccess(courseId as string);
+      if (denied) return denied;
       course = existing;
+      courseAlreadyResolved = true;
+    } else {
+      // A courseCode collision means we'd actually be reusing someone
+      // else's existing course, not creating one - resolve that BEFORE
+      // uploading anything, same as attach-mode above, so a denied request
+      // never orphans a package in Storage.
+      const [existingByCode] = await db.select().from(courses).where(eq(courses.code, courseCode as string));
+      if (existingByCode) {
+        const denied = await assertCourseAccess(existingByCode.id);
+        if (denied) return denied;
+        course = existingByCode;
+        courseAlreadyResolved = true;
+      } else {
+        const session = await auth();
+        const requestedDepartmentId = formData.get("departmentId");
+        const scoped = await resolveCourseCreationDepartmentId(
+          session,
+          typeof requestedDepartmentId === "string" && requestedDepartmentId ? requestedDepartmentId : null
+        );
+        if ("error" in scoped) {
+          return badRequest(scoped.error);
+        }
+        newCourseDepartmentId = scoped.departmentId;
+      }
     }
 
     const zipBuffer = Buffer.from(await file.arrayBuffer());
@@ -75,14 +109,17 @@ export async function POST(request: NextRequest) {
 
     const { prefix } = await uploadScormPackage(zipBuffer, moduleVersionId);
 
-    if (!attachToExistingCourse) {
-      const existing = await db.select().from(courses).where(eq(courses.code, courseCode as string));
-      course =
-        existing[0] ??
-        (await db
+    if (!courseAlreadyResolved) {
+      course = (
+        await db
           .insert(courses)
-          .values({ code: courseCode as string, title: courseTitle as string })
-          .returning())[0];
+          .values({
+            code: courseCode as string,
+            title: courseTitle as string,
+            departmentId: newCourseDepartmentId,
+          })
+          .returning()
+      )[0];
     }
 
     const [courseModule] = await db

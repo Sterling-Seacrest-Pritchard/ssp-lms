@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { createDraftCourse } from "@/lib/db/course-authoring";
-import { getUserIdByEmail } from "@/lib/db/users";
-import { getDepartmentAdminDepartmentIds } from "@/lib/db/department-admins";
-import { isOrgAdmin } from "@/lib/roles";
-import { badRequest, isUuid, serverError } from "@/lib/api/errors";
+import { badRequest, serverError } from "@/lib/api/errors";
+import { resolveCourseCreationDepartmentId } from "@/lib/api/course-access";
 
 export async function POST(request: Request) {
   try {
@@ -23,29 +21,12 @@ export async function POST(request: Request) {
     }
 
     const session = await auth();
-    let departmentId: string | null = null;
-    if (!isOrgAdmin(session?.user?.roles)) {
-      const userId = session?.user?.email ? await getUserIdByEmail(session.user.email) : null;
-      const administeredIds = userId ? await getDepartmentAdminDepartmentIds(userId) : [];
-      if (administeredIds.length === 0) {
-        return badRequest("You don't administer any department yet");
-      }
-      if (administeredIds.length === 1) {
-        departmentId = administeredIds[0];
-      } else {
-        if (!requestedDepartmentId || !administeredIds.includes(requestedDepartmentId)) {
-          return badRequest("departmentId must be one of the departments you administer");
-        }
-        departmentId = requestedDepartmentId;
-      }
-    } else if (requestedDepartmentId) {
-      if (!isUuid(requestedDepartmentId)) {
-        return badRequest("departmentId must be a UUID");
-      }
-      departmentId = requestedDepartmentId;
+    const scoped = await resolveCourseCreationDepartmentId(session, requestedDepartmentId ?? null);
+    if ("error" in scoped) {
+      return badRequest(scoped.error);
     }
 
-    const { id } = await createDraftCourse(title.trim(), departmentId);
+    const { id } = await createDraftCourse(title.trim(), scoped.departmentId);
     return NextResponse.json({ courseId: id });
   } catch (error) {
     return serverError(error);
