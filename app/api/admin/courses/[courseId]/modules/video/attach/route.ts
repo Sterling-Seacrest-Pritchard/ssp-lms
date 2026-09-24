@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { badRequest, isUuid, notFound, serverError } from "@/lib/api/errors";
+import { assertCourseAccess } from "@/lib/api/course-access";
 import { attachExistingVideo } from "@/lib/video/assets";
 
 export async function POST(
@@ -11,6 +12,8 @@ export async function POST(
     if (!isUuid(courseId)) {
       return badRequest("courseId must be a UUID");
     }
+    const denied = await assertCourseAccess(courseId);
+    if (denied) return denied;
 
     let body: unknown;
     try {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { reorderModules } from "@/lib/db/course-authoring";
 import { badRequest, isUuid, serverError } from "@/lib/api/errors";
+import { assertCourseAccess } from "@/lib/api/course-access";
 
 export async function PATCH(
   request: NextRequest,
@@ -11,6 +12,8 @@ export async function PATCH(
     if (!isUuid(courseId)) {
       return badRequest("courseId must be a UUID");
     }
+    const denied = await assertCourseAccess(courseId);
+    if (denied) return denied;
 
     let body: unknown;
     try {
