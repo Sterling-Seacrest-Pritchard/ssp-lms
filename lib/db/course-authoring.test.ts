@@ -144,6 +144,18 @@ describe("createDraftCourse", () => {
       await db.delete(courses).where(eq(courses.id, id));
     }
   });
+
+  it("sets the given departmentId on creation", async () => {
+    const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
+    try {
+      const { id } = await createDraftCourse("Scoped Course", dept.id);
+      const [course] = await db.select().from(courses).where(eq(courses.id, id));
+      expect(course.departmentId).toBe(dept.id);
+    } finally {
+      await db.delete(courses).where(eq(courses.departmentId, dept.id));
+      await db.delete(departments).where(eq(departments.id, dept.id));
+    }
+  });
 });
 
 describe("updateCourseDetails", () => {
