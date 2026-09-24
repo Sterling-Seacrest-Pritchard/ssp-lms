@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { requiresAdminRole, adminForbiddenResponse } from "./admin-gate";
+import { requiresAdminRole, adminForbiddenResponse, requiresOrgAdminRole } from "./admin-gate";
 
 describe("requiresAdminRole", () => {
   it("gates the admin UI", () => {
@@ -38,6 +38,30 @@ describe("requiresAdminRole", () => {
   it("does not treat a path that merely starts with the same letters as admin-only", () => {
     expect(requiresAdminRole("/administrators")).toBe(false);
     expect(requiresAdminRole("/api/administrators")).toBe(false);
+  });
+});
+
+describe("requiresOrgAdminRole", () => {
+  it("gates the Org Admin page and department management API", () => {
+    expect(requiresOrgAdminRole("/admin/org")).toBe(true);
+    expect(requiresOrgAdminRole("/admin/org/departments/abc")).toBe(true);
+    expect(requiresOrgAdminRole("/api/admin/departments")).toBe(true);
+    expect(requiresOrgAdminRole("/api/admin/departments/abc/members")).toBe(true);
+  });
+
+  it("does NOT gate department-scoped actions a Department Admin should still reach", () => {
+    expect(requiresOrgAdminRole("/api/admin/departments/abc/course-assignments")).toBe(false);
+  });
+
+  it("leaves every other admin path ungated by this check", () => {
+    expect(requiresOrgAdminRole("/admin")).toBe(false);
+    expect(requiresOrgAdminRole("/admin/content")).toBe(false);
+    expect(requiresOrgAdminRole("/admin/department")).toBe(false);
+    expect(requiresOrgAdminRole("/courses")).toBe(false);
+  });
+
+  it("does not treat a path that merely starts with the same letters as Org-Admin-only", () => {
+    expect(requiresOrgAdminRole("/admin/organization-chart")).toBe(false);
   });
 });
 

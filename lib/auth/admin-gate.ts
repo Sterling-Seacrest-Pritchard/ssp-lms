@@ -43,3 +43,21 @@ export function adminForbiddenResponse(pathname: string, requestUrl: string): Ne
   }
   return NextResponse.redirect(new URL("/", requestUrl));
 }
+
+/**
+ * Does this path require the Org Admin tier specifically (not just any
+ * admin)? Department creation, the top-level department list, and roster
+ * membership changes are Org-Admin-exclusive; a department's OWN
+ * course-assignment endpoint stays open to a Department Admin administering
+ * that department - `requiresAdminRole` already gates the whole tree to
+ * "some admin," and per-route/query scoping (not this function) decides
+ * whose department they can act on. Roster membership (`/members`) is
+ * listed explicitly here rather than matched by a `/api/admin/departments`
+ * prefix, since that prefix would also (wrongly) catch `/course-assignments`.
+ */
+export function requiresOrgAdminRole(pathname: string): boolean {
+  if (isAtOrUnder(pathname, "/admin/org")) return true;
+  if (pathname === "/api/admin/departments") return true;
+  if (/^\/api\/admin\/departments\/[^/]+\/members$/.test(pathname)) return true;
+  return false;
+}

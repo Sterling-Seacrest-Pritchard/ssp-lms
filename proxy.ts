@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { isAdminRole } from "@/lib/roles";
-import { requiresAdminRole, adminForbiddenResponse } from "@/lib/auth/admin-gate";
+import { isAdminRole, isOrgAdmin } from "@/lib/roles";
+import { requiresAdminRole, requiresOrgAdminRole, adminForbiddenResponse } from "@/lib/auth/admin-gate";
 
 export default auth((req) => {
   if (!req.auth) {
@@ -11,6 +11,9 @@ export default auth((req) => {
   }
 
   if (requiresAdminRole(req.nextUrl.pathname) && !isAdminRole(req.auth.user?.roles)) {
+    return adminForbiddenResponse(req.nextUrl.pathname, req.url);
+  }
+  if (requiresOrgAdminRole(req.nextUrl.pathname) && !isOrgAdmin(req.auth.user?.roles)) {
     return adminForbiddenResponse(req.nextUrl.pathname, req.url);
   }
 });
