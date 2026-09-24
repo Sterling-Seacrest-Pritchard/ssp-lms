@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getScormLaunchInfoForAdmin } from "@/lib/scorm/launch-info";
+import { canCallerAccessCourse } from "@/lib/api/course-access";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { ScormLaunch } from "./scorm-launch";
 
@@ -10,12 +11,18 @@ export default async function ScormTestPage(
 ) {
   const { moduleVersionId } = await props.params;
 
-  // Deliberately the un-gated lookup: this harness exists to test a module
-  // BEFORE its course is published, and the whole `/admin` tree is admin-only
-  // (see `lib/auth/admin-gate.ts`).
+  // Deliberately the un-gated-by-publish-status lookup: this harness exists
+  // to test a module BEFORE its course is published. "The whole /admin tree
+  // is admin-only" is NOT sufficient on its own, though - a Department Admin
+  // is still an admin, and must not be able to read another department's
+  // (or a global) course's package through this harness. Same
+  // canCallerAccessCourse ownership check as the course builder page.
   let info;
   try {
     info = await getScormLaunchInfoForAdmin(moduleVersionId);
+    if (info && !(await canCallerAccessCourse(info.courseId))) {
+      info = null;
+    }
   } catch {
     return <UnavailableState message="Could not load this module right now. Please try again in a moment." />;
   }
