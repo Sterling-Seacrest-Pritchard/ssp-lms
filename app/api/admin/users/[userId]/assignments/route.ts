@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { isOrgAdmin } from "@/lib/roles";
 import { badRequest, isUuid, serverError } from "@/lib/api/errors";
 import {
   assignCourse,
@@ -12,6 +13,11 @@ export async function GET(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
+    const session = await auth();
+    if (!isOrgAdmin(session?.user?.roles)) {
+      return NextResponse.json({ error: "Org Admin role required" }, { status: 403 });
+    }
+
     const { userId } = await params;
     if (!isUuid(userId)) {
       return badRequest("userId must be a UUID");
@@ -28,6 +34,14 @@ export async function POST(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
+    // This lets the caller enroll ANY employee org-wide in ANY course - not
+    // scoped to a department at all - so it must stay Org-Admin-only, same
+    // as `requiresOrgAdminRole` enforces at the proxy level.
+    const session = await auth();
+    if (!isOrgAdmin(session?.user?.roles)) {
+      return NextResponse.json({ error: "Org Admin role required" }, { status: 403 });
+    }
+
     const { userId } = await params;
     if (!isUuid(userId)) {
       return badRequest("userId must be a UUID");
@@ -44,7 +58,6 @@ export async function POST(
       return badRequest("courseId must be a UUID");
     }
 
-    const session = await auth();
     try {
       await assignCourse(courseId, userId, session?.user?.email ?? null);
     } catch (error) {

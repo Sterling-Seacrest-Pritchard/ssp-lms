@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/auth";
+import { isOrgAdmin } from "@/lib/roles";
 import { clearUserDepartment, setUserDepartment } from "@/lib/db/departments";
 import { assignDepartmentCoursesToUser } from "@/lib/db/department-course-assignments";
 import { badRequest, isUuid, serverError } from "@/lib/api/errors";
@@ -25,6 +27,11 @@ async function parseParams(
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const session = await auth();
+    if (!isOrgAdmin(session?.user?.roles)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const parsed = await parseParams(params, request);
     if (parsed instanceof NextResponse) return parsed;
 
@@ -38,6 +45,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const session = await auth();
+    if (!isOrgAdmin(session?.user?.roles)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const parsed = await parseParams(params, request);
     if (parsed instanceof NextResponse) return parsed;
 

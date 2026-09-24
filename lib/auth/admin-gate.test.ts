@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { requiresAdminRole, adminForbiddenResponse } from "./admin-gate";
+import { requiresAdminRole, adminForbiddenResponse, requiresOrgAdminRole } from "./admin-gate";
 
 describe("requiresAdminRole", () => {
   it("gates the admin UI", () => {
@@ -38,6 +38,52 @@ describe("requiresAdminRole", () => {
   it("does not treat a path that merely starts with the same letters as admin-only", () => {
     expect(requiresAdminRole("/administrators")).toBe(false);
     expect(requiresAdminRole("/api/administrators")).toBe(false);
+  });
+});
+
+describe("requiresOrgAdminRole", () => {
+  it("gates the Org Admin page and department management API", () => {
+    expect(requiresOrgAdminRole("/admin/org")).toBe(true);
+    expect(requiresOrgAdminRole("/admin/org/departments/abc")).toBe(true);
+    expect(requiresOrgAdminRole("/api/admin/departments")).toBe(true);
+    expect(requiresOrgAdminRole("/api/admin/departments/abc/members")).toBe(true);
+    expect(requiresOrgAdminRole("/api/admin/department-admins")).toBe(true);
+    expect(requiresOrgAdminRole("/api/admin/department-admins/abc/def")).toBe(true);
+  });
+
+  it("gates the org-wide user directory/assignments API and the Entra resync trigger", () => {
+    expect(requiresOrgAdminRole("/api/admin/users")).toBe(true);
+    expect(requiresOrgAdminRole("/api/admin/users/11111111-1111-1111-1111-111111111111/assignments")).toBe(true);
+    expect(
+      requiresOrgAdminRole(
+        "/api/admin/users/11111111-1111-1111-1111-111111111111/assignments/22222222-2222-2222-2222-222222222222"
+      )
+    ).toBe(true);
+    expect(requiresOrgAdminRole("/api/admin/entra-sync")).toBe(true);
+  });
+
+  it("does NOT gate the Entra cron sync route - it authenticates with a bearer secret, not a session", () => {
+    expect(requiresOrgAdminRole("/api/admin/entra-sync/cron")).toBe(false);
+  });
+
+  it("gates the reports page, per the spec's resolution that it stays Org-Admin-only", () => {
+    expect(requiresOrgAdminRole("/admin/reports")).toBe(true);
+    expect(requiresOrgAdminRole("/admin/reports/anything")).toBe(true);
+  });
+
+  it("does NOT gate department-scoped actions a Department Admin should still reach", () => {
+    expect(requiresOrgAdminRole("/api/admin/departments/abc/course-assignments")).toBe(false);
+  });
+
+  it("leaves every other admin path ungated by this check", () => {
+    expect(requiresOrgAdminRole("/admin")).toBe(false);
+    expect(requiresOrgAdminRole("/admin/content")).toBe(false);
+    expect(requiresOrgAdminRole("/admin/department")).toBe(false);
+    expect(requiresOrgAdminRole("/courses")).toBe(false);
+  });
+
+  it("does not treat a path that merely starts with the same letters as Org-Admin-only", () => {
+    expect(requiresOrgAdminRole("/admin/organization-chart")).toBe(false);
   });
 });
 

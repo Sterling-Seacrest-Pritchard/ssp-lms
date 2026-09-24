@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -6,6 +6,11 @@ import { PATCH, DELETE } from "./route";
 import { db } from "@/lib/db/client";
 import { departments, users, courses, courseAssignments, departmentCourseAssignments, enrollments } from "@/lib/db/schema";
 import { assignCourseToDepartment } from "@/lib/db/department-course-assignments";
+import { auth } from "@/auth";
+
+vi.mock("@/auth", () => ({
+  auth: vi.fn().mockResolvedValue({ user: { email: "org-admin@example.com", roles: ["OrgAdmin"] } }),
+}));
 
 async function makeDeptAndUser() {
   const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
@@ -42,6 +47,27 @@ describe("PATCH /api/admin/departments/[id]/members", () => {
     });
     const response = await PATCH(request, { params: Promise.resolve({ id: "not-a-uuid" }) });
     expect(response.status).toBe(400);
+  });
+
+  it("returns 403 when the caller is not an Org Admin", async () => {
+    vi.mocked(auth).mockResolvedValueOnce({
+      user: { email: "dept-admin@example.com", roles: ["DepartmentAdmin"] },
+    } as never);
+    const { dept, user } = await makeDeptAndUser();
+    try {
+      const request = new NextRequest(`http://localhost/api/admin/departments/${dept.id}/members`, {
+        method: "PATCH",
+        body: JSON.stringify({ userId: user.id }),
+      });
+      const response = await PATCH(request, { params: Promise.resolve({ id: dept.id }) });
+      expect(response.status).toBe(403);
+
+      const [row] = await db.select().from(users).where(eq(users.id, user.id));
+      expect(row.departmentId).toBeNull();
+    } finally {
+      await db.delete(users).where(eq(users.id, user.id));
+      await db.delete(departments).where(eq(departments.id, dept.id));
+    }
   });
 
   it("auto-assigns every course already assigned to the department to the newly-added user", async () => {

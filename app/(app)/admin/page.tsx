@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { orgStats } from "@/lib/mock-data/reporting";
 import { currentUser } from "@/lib/mock-data/courses";
 import { auth } from "@/auth";
+import { isOrgAdmin } from "@/lib/roles";
 
 const statCards = [
   { label: "Total Employees", value: orgStats.totalEmployees },
@@ -12,9 +13,17 @@ const statCards = [
   { label: "Overdue Training", value: orgStats.overdueTraining },
 ];
 
+// Shown to every admin tier. The Org-Admin-only links live in
+// `orgAdminOnlyQuickLinks` below - matching `app-shell.tsx`'s nav, which
+// already keeps Reports/Org Admin out of `departmentAdminNav`. Without this
+// split, a Department Admin saw an "Org Admin" card here that 404s/redirects
+// the moment they click it.
 const quickLinks = [
   { href: "/admin/content", label: "Content Authoring", description: "Manage courses, modules, and quizzes", icon: BookOpen },
   { href: "/admin/videos", label: "Video Library", description: "Uploaded and processing video assets", icon: Video },
+];
+
+const orgAdminOnlyQuickLinks = [
   { href: "/admin/reports", label: "Reports", description: "Org-wide completion metrics", icon: BarChart3 },
   { href: "/admin/org", label: "Org Admin", description: "Department and role management", icon: Users },
 ];
@@ -22,6 +31,9 @@ const quickLinks = [
 export default async function AdminHomePage() {
   const session = await auth();
   const displayName = session?.user?.name ?? currentUser.name;
+  const visibleQuickLinks = isOrgAdmin(session?.user?.roles)
+    ? [...quickLinks, ...orgAdminOnlyQuickLinks]
+    : quickLinks;
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-8">
@@ -46,7 +58,7 @@ export default async function AdminHomePage() {
       <div>
         <h2 className="mb-4 text-lg font-medium">Quick Links</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {quickLinks.map((link) => {
+          {visibleQuickLinks.map((link) => {
             const Icon = link.icon;
             return (
               <Link key={link.href} href={link.href}>

@@ -88,6 +88,31 @@ describe("listRealCourses", () => {
       await db.delete(courses).where(eq(courses.id, course.id));
     }
   });
+
+  it("filters to the given department ids when provided", async () => {
+    const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
+    const [inDept] = await db
+      .insert(courses)
+      .values({ code: `SCOPE-IN-${randomUUID()}`, title: "In Dept", departmentId: dept.id })
+      .returning();
+    const [outOfDept] = await db
+      .insert(courses)
+      .values({ code: `SCOPE-OUT-${randomUUID()}`, title: "Out of Dept" })
+      .returning();
+    try {
+      const scoped = await listRealCourses([dept.id]);
+      expect(scoped.map((c) => c.id)).toContain(inDept.id);
+      expect(scoped.map((c) => c.id)).not.toContain(outOfDept.id);
+
+      const unscoped = await listRealCourses();
+      expect(unscoped.map((c) => c.id)).toContain(inDept.id);
+      expect(unscoped.map((c) => c.id)).toContain(outOfDept.id);
+    } finally {
+      await db.delete(courses).where(eq(courses.id, inDept.id));
+      await db.delete(courses).where(eq(courses.id, outOfDept.id));
+      await db.delete(departments).where(eq(departments.id, dept.id));
+    }
+  });
 });
 
 describe("getRealCourseDetail", () => {

@@ -123,9 +123,11 @@ function ModuleRow({
 export function BuilderClient({
   initialCourse,
   departments,
+  isOrgAdminCaller,
 }: {
   initialCourse: CourseForBuilder;
   departments: { id: string; name: string }[];
+  isOrgAdminCaller: boolean;
 }) {
   const router = useRouter();
   const [course, setCourse] = useState(initialCourse);
@@ -464,30 +466,56 @@ export function BuilderClient({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="department">Department</Label>
-              <Select
-                value={course.departmentId ?? "none"}
-                items={[
-                  { value: "none", label: "General" },
-                  ...departments.map((dept) => ({ value: dept.id, label: dept.name })),
-                ]}
-                onValueChange={(value) => {
-                  const departmentId = value === "none" ? null : (value as string);
-                  updateField("departmentId", departmentId);
-                  patchDetails({ departmentId });
-                }}
-              >
-                <SelectTrigger id="department" className="w-full">
-                  <SelectValue placeholder="General" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">General</SelectItem>
-                  {departments.map((dept) => (
-                    <SelectItem key={dept.id} value={dept.id}>
-                      {dept.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {isOrgAdminCaller ? (
+                <Select
+                  value={course.departmentId ?? "none"}
+                  items={[
+                    { value: "none", label: "General" },
+                    ...departments.map((dept) => ({ value: dept.id, label: dept.name })),
+                  ]}
+                  onValueChange={(value) => {
+                    const departmentId = value === "none" ? null : (value as string);
+                    updateField("departmentId", departmentId);
+                    patchDetails({ departmentId });
+                  }}
+                >
+                  <SelectTrigger id="department" className="w-full">
+                    <SelectValue placeholder="General" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">General</SelectItem>
+                    {departments.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id}>
+                        {dept.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : departments.length <= 1 ? (
+                <p className="flex h-8 items-center text-sm text-muted-foreground">
+                  {departments[0]?.name ?? "General"} (locked to your department)
+                </p>
+              ) : (
+                <Select
+                  value={course.departmentId ?? departments[0].id}
+                  items={departments.map((dept) => ({ value: dept.id, label: dept.name }))}
+                  onValueChange={(value) => {
+                    updateField("departmentId", value as string);
+                    patchDetails({ departmentId: value });
+                  }}
+                >
+                  <SelectTrigger id="department" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id}>
+                        {dept.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="dueDate">Due Date (optional)</Label>

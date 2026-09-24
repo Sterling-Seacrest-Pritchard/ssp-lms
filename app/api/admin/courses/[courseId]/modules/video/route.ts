@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { modules, moduleVersions, videoModuleVersions } from "@/lib/db/schema";
 import { badRequest, isUuid, serverError } from "@/lib/api/errors";
+import { assertCourseAccess } from "@/lib/api/course-access";
 import { beginVideoUpload, FreeTierLimitError } from "@/lib/video/assets";
 
 export async function POST(
@@ -14,6 +15,8 @@ export async function POST(
     if (!isUuid(courseId)) {
       return badRequest("courseId must be a UUID");
     }
+    const denied = await assertCourseAccess(courseId);
+    if (denied) return denied;
 
     let body: unknown;
     try {

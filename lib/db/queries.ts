@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "./client";
 import { courses, modules, departments, enrollments, courseAssignments } from "./schema";
 import { isUuid } from "@/lib/api/errors";
@@ -38,12 +38,14 @@ function toSummary(row: {
   return { ...row, dueDate: row.dueDate ? row.dueDate.toISOString() : null };
 }
 
-export async function listRealCourses(): Promise<RealCourseSummary[]> {
-  const rows = await db
+export async function listRealCourses(departmentIds?: string[]): Promise<RealCourseSummary[]> {
+  const base = db
     .select(courseSummaryColumns)
     .from(courses)
     .leftJoin(modules, eq(modules.courseId, courses.id))
-    .leftJoin(departments, eq(departments.id, courses.departmentId))
+    .leftJoin(departments, eq(departments.id, courses.departmentId));
+
+  const rows = await (departmentIds ? base.where(inArray(courses.departmentId, departmentIds)) : base)
     .groupBy(
       courses.id,
       courses.code,

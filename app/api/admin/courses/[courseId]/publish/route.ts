@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { publishCourse } from "@/lib/db/course-authoring";
 import { badRequest, isUuid, serverError } from "@/lib/api/errors";
+import { assertCourseAccess } from "@/lib/api/course-access";
 
 export async function POST(
   _request: NextRequest,
@@ -11,6 +12,8 @@ export async function POST(
     if (!isUuid(courseId)) {
       return badRequest("courseId must be a UUID");
     }
+    const denied = await assertCourseAccess(courseId);
+    if (denied) return denied;
 
     const result = await publishCourse(courseId);
     if ("error" in result) {

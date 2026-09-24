@@ -4,8 +4,10 @@ import { ArrowLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { getDepartmentWithMembers, listUsersNotInDepartment } from "@/lib/db/departments";
+import { listAdminsForDepartment, listDepartmentAdminEligibleUsers } from "@/lib/db/department-admins";
 import { RosterClient } from "./roster-client";
 import { DepartmentCoursesClient } from "./department-courses-client";
+import { DepartmentAdminsClient } from "./department-admins-client";
 
 export default async function DepartmentDetailPage(
   props: PageProps<"/admin/org/departments/[id]">
@@ -14,9 +16,13 @@ export default async function DepartmentDetailPage(
 
   let department;
   let eligibleUsers;
+  let admins;
+  let eligibleAdmins;
   try {
     department = await getDepartmentWithMembers(id);
     eligibleUsers = department ? await listUsersNotInDepartment(id) : [];
+    admins = department ? await listAdminsForDepartment(id) : [];
+    eligibleAdmins = department ? await listDepartmentAdminEligibleUsers(id) : [];
   } catch {
     return <UnavailableState message="Could not load this department right now. Please try again in a moment." />;
   }
@@ -52,6 +58,15 @@ export default async function DepartmentDetailPage(
         </CardHeader>
         <CardContent>
           <DepartmentCoursesClient departmentId={department.id} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Admins</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DepartmentAdminsClient departmentId={department.id} admins={admins} eligibleUsers={eligibleAdmins} />
         </CardContent>
       </Card>
     </div>

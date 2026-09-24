@@ -6,6 +6,7 @@ import { getScormLaunchInfo, getScormLaunchInfoForAdmin } from "@/lib/scorm/laun
 import { getEnrollmentId } from "@/lib/db/enrollments";
 import { getUserIdByEmail } from "@/lib/db/users";
 import { isUuid, notFound, serverError } from "@/lib/api/errors";
+import { canCallerAccessCourse } from "@/lib/api/course-access";
 
 /**
  * Same-origin content proxy for extracted SCORM packages.
@@ -55,6 +56,12 @@ export async function GET(
       if (!enrollmentId) {
         return notFound("Module version not found");
       }
+    } else if (!(await canCallerAccessCourse(info.courseId, session))) {
+      // "Admin" isn't a single tier - a Department Admin is still an admin
+      // for isAdminRole's purposes, but must not be able to read another
+      // department's (or a global) course's package bytes through this
+      // proxy. Same ownership check as the /admin/scorm-test page.
+      return notFound("Module version not found");
     }
 
     const segments = path ?? [];

@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createTextModule } from "@/lib/db/text-authoring";
-import { badRequest, serverError } from "@/lib/api/errors";
+import { badRequest, isUuid, serverError } from "@/lib/api/errors";
+import { assertCourseAccess } from "@/lib/api/course-access";
 
 export async function POST(request: NextRequest, props: { params: Promise<{ courseId: string }> }) {
   try {
     const { courseId } = await props.params;
+    if (!isUuid(courseId)) {
+      return badRequest("courseId must be a UUID");
+    }
+    const denied = await assertCourseAccess(courseId);
+    if (denied) return denied;
+
     let body: unknown;
     try {
       body = await request.json();
