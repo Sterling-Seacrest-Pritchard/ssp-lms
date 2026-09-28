@@ -3,14 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { listDepartmentsWithCounts } from "@/lib/db/departments";
-import { departmentCompletion } from "@/lib/mock-data/reporting";
+import { getDepartmentCompletionBreakdown } from "@/lib/db/org-reporting";
 import { NewDepartmentDialog } from "./new-department-dialog";
 import { UsersSection } from "./users-section";
 
 export default async function OrgAdminPage() {
-  let departments;
+  let departments, departmentCompletion;
   try {
     departments = await listDepartmentsWithCounts();
+    departmentCompletion = await getDepartmentCompletionBreakdown();
   } catch {
     return <UnavailableState message="Could not load departments right now. Please try again in a moment." />;
   }
@@ -80,8 +81,8 @@ export default async function OrgAdminPage() {
               </TableHeader>
               <TableBody>
                 {departmentCompletion.map((row) => (
-                  <TableRow key={row.department}>
-                    <TableCell className="font-medium">{row.department}</TableCell>
+                  <TableRow key={row.departmentId}>
+                    <TableCell className="font-medium">{row.departmentName}</TableCell>
                     <TableCell className="text-right">{row.completed}%</TableCell>
                     <TableCell className="text-right">{row.inProgress}%</TableCell>
                     <TableCell className="text-right">{row.notStarted}%</TableCell>
