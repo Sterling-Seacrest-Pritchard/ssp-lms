@@ -6,6 +6,8 @@ import { PATCH, DELETE } from "./route";
 import { db } from "@/lib/db/client";
 import { departments, users, courses, courseAssignments, departmentCourseAssignments, enrollments } from "@/lib/db/schema";
 import { assignCourseToDepartment } from "@/lib/db/department-course-assignments";
+import { assignDepartmentAdmin } from "@/lib/db/department-admins";
+import { departmentAdmins } from "@/lib/db/schema";
 import { auth } from "@/auth";
 
 vi.mock("@/auth", () => ({
@@ -49,7 +51,7 @@ describe("PATCH /api/admin/departments/[id]/members", () => {
     expect(response.status).toBe(400);
   });
 
-  it("returns 403 when the caller is not an Org Admin", async () => {
+  it("returns 403 when the caller is neither an Org Admin nor an admin of this department", async () => {
     vi.mocked(auth).mockResolvedValueOnce({
       user: { email: "dept-admin@example.com", roles: ["DepartmentAdmin"] },
     } as never);
@@ -67,6 +69,61 @@ describe("PATCH /api/admin/departments/[id]/members", () => {
     } finally {
       await db.delete(users).where(eq(users.id, user.id));
       await db.delete(departments).where(eq(departments.id, dept.id));
+    }
+  });
+
+  it("allows a Department Admin who administers this department to move a user in", async () => {
+    const { dept, user } = await makeDeptAndUser();
+    const [admin] = await db
+      .insert(users)
+      .values({ entraObjectId: randomUUID(), email: `${randomUUID()}@example.com`, displayName: "Dept Admin" })
+      .returning();
+    await assignDepartmentAdmin(admin.id, dept.id, null);
+    vi.mocked(auth).mockResolvedValueOnce({
+      user: { email: admin.email, roles: ["DepartmentAdmin"] },
+    } as never);
+    try {
+      const request = new NextRequest(`http://localhost/api/admin/departments/${dept.id}/members`, {
+        method: "PATCH",
+        body: JSON.stringify({ userId: user.id }),
+      });
+      const response = await PATCH(request, { params: Promise.resolve({ id: dept.id }) });
+      expect(response.status).toBe(200);
+
+      const [row] = await db.select().from(users).where(eq(users.id, user.id));
+      expect(row.departmentId).toBe(dept.id);
+    } finally {
+      await db.delete(departmentAdmins).where(eq(departmentAdmins.userId, admin.id));
+      await db.delete(users).where(eq(users.id, user.id));
+      await db.delete(users).where(eq(users.id, admin.id));
+      await db.delete(departments).where(eq(departments.id, dept.id));
+    }
+  });
+
+  it("returns 403 when a Department Admin acts on a department they do not administer", async () => {
+    const { dept, user } = await makeDeptAndUser();
+    const otherDept = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning().then(([d]) => d);
+    const [admin] = await db
+      .insert(users)
+      .values({ entraObjectId: randomUUID(), email: `${randomUUID()}@example.com`, displayName: "Dept Admin" })
+      .returning();
+    await assignDepartmentAdmin(admin.id, otherDept.id, null);
+    vi.mocked(auth).mockResolvedValueOnce({
+      user: { email: admin.email, roles: ["DepartmentAdmin"] },
+    } as never);
+    try {
+      const request = new NextRequest(`http://localhost/api/admin/departments/${dept.id}/members`, {
+        method: "PATCH",
+        body: JSON.stringify({ userId: user.id }),
+      });
+      const response = await PATCH(request, { params: Promise.resolve({ id: dept.id }) });
+      expect(response.status).toBe(403);
+    } finally {
+      await db.delete(departmentAdmins).where(eq(departmentAdmins.userId, admin.id));
+      await db.delete(users).where(eq(users.id, user.id));
+      await db.delete(users).where(eq(users.id, admin.id));
+      await db.delete(departments).where(eq(departments.id, dept.id));
+      await db.delete(departments).where(eq(departments.id, otherDept.id));
     }
   });
 

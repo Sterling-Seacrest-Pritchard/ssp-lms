@@ -46,9 +46,12 @@ describe("requiresOrgAdminRole", () => {
     expect(requiresOrgAdminRole("/admin/org")).toBe(true);
     expect(requiresOrgAdminRole("/admin/org/departments/abc")).toBe(true);
     expect(requiresOrgAdminRole("/api/admin/departments")).toBe(true);
-    expect(requiresOrgAdminRole("/api/admin/departments/abc/members")).toBe(true);
     expect(requiresOrgAdminRole("/api/admin/department-admins")).toBe(true);
     expect(requiresOrgAdminRole("/api/admin/department-admins/abc/def")).toBe(true);
+  });
+
+  it("leaves a department's own roster endpoint open to any admin tier at the gate level (per-department ownership is checked in the route handler)", () => {
+    expect(requiresOrgAdminRole("/api/admin/departments/abc/members")).toBe(false);
   });
 
   it("gates the org-wide user directory/assignments API and the Entra resync trigger", () => {

@@ -40,19 +40,19 @@ const learnerNav = [
 
 const orgAdminNav = [
   { href: "/admin", label: "Home", icon: Home },
+  { href: "/courses", label: "Courses", icon: GraduationCap },
   { href: "/admin/content", label: "Content Authoring", icon: BookOpen },
   { href: "/admin/videos", label: "Video Library", icon: Video },
   { href: "/admin/reports", label: "Reports", icon: BarChart3 },
   { href: "/admin/org", label: "Org Admin", icon: Users },
-  { href: "/courses", label: "Courses", icon: GraduationCap },
 ];
 
 const departmentAdminNav = [
   { href: "/admin", label: "Home", icon: Home },
+  { href: "/courses", label: "Courses", icon: GraduationCap },
   { href: "/admin/content", label: "Content Authoring", icon: BookOpen },
   { href: "/admin/videos", label: "Video Library", icon: Video },
   { href: "/admin/department", label: "Department", icon: Users },
-  { href: "/courses", label: "Courses", icon: GraduationCap },
 ];
 
 function homeFor(role: Role) {
@@ -62,7 +62,7 @@ function homeFor(role: Role) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [testRole, setTestRole] = useState<"Learner" | null>(null);
+  const [testRole, setTestRole] = useState<"Learner" | "DepartmentAdmin" | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { data: session, status } = useSession();
@@ -71,9 +71,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const real = isAuthenticated ? roleFromClaims(session?.user?.roles) : null;
   const canOverrideRole = real?.role === "DepartmentAdmin" || real?.role === "OrgAdmin";
   // Even a stale localStorage value from before a role change can't self-escalate a non-admin,
-  // and can't hand a Department Admin the Org Admin tier (or vice versa) - the only override
-  // this menu ever offers is "preview as Learner" vs "my real admin role."
-  const effectiveTestRole = canOverrideRole && testRole === "Learner" ? "Learner" : null;
+  // and can't hand anyone the Org Admin tier - the only overrides this menu ever offers are
+  // "preview as Learner" or "preview as Department Admin," never "become Org Admin." A real
+  // Department Admin previewing "Department Admin" is a no-op (they already see that view).
+  const effectiveTestRole =
+    canOverrideRole && (testRole === "Learner" || testRole === "DepartmentAdmin") ? testRole : null;
   const role: Role = effectiveTestRole ?? real?.role ?? "Learner";
   const roleLabel = effectiveTestRole ?? real?.label ?? "Learner";
   const isTestOverride = effectiveTestRole !== null;
@@ -84,12 +86,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const storedCollapsed = localStorage.getItem("sidebar-collapsed");
     if (storedCollapsed) setCollapsed(storedCollapsed === "true");
     const storedTestRole = localStorage.getItem("test-role");
-    if (storedTestRole === "Learner") {
+    if (storedTestRole === "Learner" || storedTestRole === "DepartmentAdmin") {
       setTestRole(storedTestRole);
     }
   }, []);
 
-  const updateTestRole = (next: "Learner" | null) => {
+  const updateTestRole = (next: "Learner" | "DepartmentAdmin" | null) => {
     setTestRole(next);
     if (next) {
       localStorage.setItem("test-role", next);
@@ -215,6 +217,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   )}
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
+                  {real?.role === "OrgAdmin" && (
+                    <DropdownMenuItem onClick={() => updateTestRole("DepartmentAdmin")}>
+                      Department Admin
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onClick={() => updateTestRole("Learner")}>
                     Learner
                   </DropdownMenuItem>

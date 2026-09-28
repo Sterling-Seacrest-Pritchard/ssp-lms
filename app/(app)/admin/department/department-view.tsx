@@ -1,18 +1,20 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { getDepartmentWithMembers } from "@/lib/db/departments";
 import { getDepartmentCompletionStats } from "@/lib/db/department-reporting";
 import { DepartmentCoursesClient } from "@/app/(app)/admin/org/departments/[id]/department-courses-client";
+import { RosterClient } from "@/app/(app)/admin/org/departments/[id]/roster-client";
 
 export async function DepartmentView({
   departmentIds,
   selectedDepartmentId,
+  eligibleUsers,
 }: {
   departmentIds: string[];
   selectedDepartmentId: string;
+  eligibleUsers: { id: string; email: string; displayName: string; currentDepartmentName: string | null }[];
 }) {
   let department, stats;
   try {
@@ -58,30 +60,11 @@ export async function DepartmentView({
           <CardTitle className="text-base">Users</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {department.members.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={2} className="text-center text-sm text-muted-foreground">
-                    No members yet.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                department.members.map((member) => (
-                  <TableRow key={member.id}>
-                    <TableCell className="font-medium">{member.displayName}</TableCell>
-                    <TableCell>{member.email}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+          <RosterClient
+            departmentId={selectedDepartmentId}
+            members={department.members}
+            eligibleUsers={eligibleUsers}
+          />
         </CardContent>
       </Card>
 
