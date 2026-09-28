@@ -7,6 +7,11 @@ export function ratePercent(numerator: number, denominator: number): number {
   return denominator === 0 ? 0 : Math.round((numerator / denominator) * 100);
 }
 
+export function computeComplianceRate(statuses: string[]): number {
+  const completed = statuses.filter((s) => s === "completed").length;
+  return ratePercent(completed, statuses.length);
+}
+
 export interface OrgStats {
   totalEmployees: number;
   activeLearners: number;
@@ -14,7 +19,7 @@ export interface OrgStats {
   overdueTraining: number;
 }
 
-export async function getOrgStats(): Promise<OrgStats> {
+export async function getOrgStats(now: Date = new Date()): Promise<OrgStats> {
   const [{ totalEmployees }] = await db
     .select({ totalEmployees: sql<number>`count(*)::int` })
     .from(users)
@@ -26,18 +31,30 @@ export async function getOrgStats(): Promise<OrgStats> {
     .innerJoin(users, eq(users.id, enrollments.userId))
     .where(and(eq(users.isActive, true), ne(enrollments.status, "not_started")));
 
+  // Only a currently-active user's enrollments count toward compliance and
+  // overdue - a departed employee's unfinished compliance course would
+  // otherwise drag the rate down and inflate overdue forever, since Entra
+  // sync deactivates leavers without clearing their enrollments.
   const complianceRows = await db
     .select({ status: enrollments.status })
     .from(enrollments)
     .innerJoin(courses, eq(courses.id, enrollments.courseId))
-    .where(eq(courses.compliance, true));
-  const completedCompliance = complianceRows.filter((r) => r.status === "completed").length;
-  const complianceRate = ratePercent(completedCompliance, complianceRows.length);
+    .innerJoin(users, eq(users.id, enrollments.userId))
+    .where(and(eq(courses.compliance, true), eq(users.isActive, true)));
+  const complianceRate = computeComplianceRate(complianceRows.map((r) => r.status));
 
   const [{ overdueTraining }] = await db
     .select({ overdueTraining: sql<number>`count(*)::int` })
     .from(enrollments)
-    .where(and(isNotNull(enrollments.dueAt), lt(enrollments.dueAt, new Date()), ne(enrollments.status, "completed")));
+    .innerJoin(users, eq(users.id, enrollments.userId))
+    .where(
+      and(
+        eq(users.isActive, true),
+        isNotNull(enrollments.dueAt),
+        lt(enrollments.dueAt, now),
+        ne(enrollments.status, "completed")
+      )
+    );
 
   return { totalEmployees, activeLearners, complianceRate, overdueTraining };
 }
@@ -56,7 +73,7 @@ export async function getDepartmentCompletionBreakdown(): Promise<DepartmentComp
     .select({ departmentId: users.departmentId, status: enrollments.status })
     .from(enrollments)
     .innerJoin(users, eq(users.id, enrollments.userId))
-    .where(isNotNull(users.departmentId));
+    .where(and(isNotNull(users.departmentId), eq(users.isActive, true)));
 
   const statusesByDept = new Map<string, string[]>();
   for (const row of rows) {
@@ -77,8 +94,7 @@ export interface MonthlyCompletionRow {
   completions: number;
 }
 
-export async function getMonthlyCompletions(months = 6): Promise<MonthlyCompletionRow[]> {
-  const now = new Date();
+export async function getMonthlyCompletions(months = 6, now: Date = new Date()): Promise<MonthlyCompletionRow[]> {
   const buckets = Array.from({ length: months }, (_, i) => {
     const offset = months - 1 - i;
     const d = new Date(now.getFullYear(), now.getMonth() - offset, 1);

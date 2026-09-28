@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { getDepartmentCompletionBreakdown, getMonthlyCompletions, getOrgStats, ratePercent } from "./org-reporting";
+import {
+  computeComplianceRate,
+  getDepartmentCompletionBreakdown,
+  getMonthlyCompletions,
+  getOrgStats,
+  ratePercent,
+} from "./org-reporting";
 import { db } from "./client";
 import { departments, users, courses, enrollments } from "./schema";
 
@@ -12,6 +18,17 @@ describe("ratePercent", () => {
 
   it("rounds to the nearest percent", () => {
     expect(ratePercent(1, 3)).toBe(33);
+  });
+});
+
+describe("computeComplianceRate", () => {
+  it("returns 0 for an empty list, never NaN", () => {
+    expect(computeComplianceRate([])).toBe(0);
+  });
+
+  it("is exactly the percentage of completed statuses", () => {
+    expect(computeComplianceRate(["completed", "in_progress", "not_started"])).toBe(33);
+    expect(computeComplianceRate(["completed", "completed"])).toBe(100);
   });
 });
 
@@ -80,6 +97,59 @@ describe("getOrgStats", () => {
       await db.delete(courses).where(eq(courses.id, course.id));
     }
   });
+
+  it("does not count a null dueAt as overdue", async () => {
+    const [course] = await db.insert(courses).values({ code: `ORG-${randomUUID()}`, title: "x" }).returning();
+    const [user] = await db.insert(users).values({ email: `${randomUUID()}@example.com`, displayName: "x" }).returning();
+    try {
+      const before = (await getOrgStats()).overdueTraining;
+      await db.insert(enrollments).values({ userId: user.id, courseId: course.id, status: "in_progress", dueAt: null });
+      expect((await getOrgStats()).overdueTraining).toBe(before);
+    } finally {
+      await db.delete(enrollments).where(eq(enrollments.courseId, course.id));
+      await db.delete(users).where(eq(users.id, user.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+    }
+  });
+
+  it("does not count dueAt exactly equal to the reference instant as overdue", async () => {
+    const [course] = await db.insert(courses).values({ code: `ORG-${randomUUID()}`, title: "x" }).returning();
+    const [user] = await db.insert(users).values({ email: `${randomUUID()}@example.com`, displayName: "x" }).returning();
+    const referenceInstant = new Date();
+    try {
+      const before = await getOrgStats(referenceInstant);
+      await db
+        .insert(enrollments)
+        .values({ userId: user.id, courseId: course.id, status: "in_progress", dueAt: referenceInstant });
+      // Same `now` passed to both calls, so this pins the boundary exactly:
+      // dueAt === now must not count as overdue, only dueAt < now does.
+      expect((await getOrgStats(referenceInstant)).overdueTraining).toBe(before.overdueTraining);
+    } finally {
+      await db.delete(enrollments).where(eq(enrollments.courseId, course.id));
+      await db.delete(users).where(eq(users.id, user.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+    }
+  });
+
+  it("does not count an inactive user's enrollment toward compliance rate or overdue training", async () => {
+    const [course] = await db.insert(courses).values({ code: `ORG-${randomUUID()}`, title: "x", compliance: true }).returning();
+    const [inactive] = await db
+      .insert(users)
+      .values({ email: `${randomUUID()}@example.com`, displayName: "Leaver", isActive: false })
+      .returning();
+    const past = new Date(Date.now() - 1000);
+    try {
+      const before = await getOrgStats();
+      await db.insert(enrollments).values({ userId: inactive.id, courseId: course.id, status: "in_progress", dueAt: past });
+      const after = await getOrgStats();
+      expect(after.overdueTraining).toBe(before.overdueTraining);
+      expect(after.complianceRate).toBe(before.complianceRate);
+    } finally {
+      await db.delete(enrollments).where(eq(enrollments.courseId, course.id));
+      await db.delete(users).where(eq(users.id, inactive.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+    }
+  });
 });
 
 describe("getDepartmentCompletionBreakdown", () => {
@@ -91,6 +161,56 @@ describe("getDepartmentCompletionBreakdown", () => {
         expect.arrayContaining([{ departmentId: dept.id, departmentName: dept.name, completed: 0, inProgress: 0, notStarted: 0 }])
       );
     } finally {
+      await db.delete(departments).where(eq(departments.id, dept.id));
+    }
+  });
+
+  it("buckets a department's mixed-status enrollments by percentage", async () => {
+    const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
+    const [course] = await db.insert(courses).values({ code: `ORG-${randomUUID()}`, title: "x" }).returning();
+    const statuses = ["completed", "completed", "in_progress", "not_started"];
+    const userIds: string[] = [];
+    try {
+      for (const status of statuses) {
+        const [user] = await db
+          .insert(users)
+          .values({ email: `${randomUUID()}@example.com`, displayName: "x", departmentId: dept.id })
+          .returning();
+        userIds.push(user.id);
+        await db.insert(enrollments).values({ userId: user.id, courseId: course.id, status });
+      }
+
+      const rows = await getDepartmentCompletionBreakdown();
+      expect(rows).toEqual(
+        expect.arrayContaining([
+          { departmentId: dept.id, departmentName: dept.name, completed: 50, inProgress: 25, notStarted: 25 },
+        ])
+      );
+    } finally {
+      await db.delete(enrollments).where(eq(enrollments.courseId, course.id));
+      for (const id of userIds) await db.delete(users).where(eq(users.id, id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+      await db.delete(departments).where(eq(departments.id, dept.id));
+    }
+  });
+
+  it("does not count an inactive user's enrollment toward their department's breakdown", async () => {
+    const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
+    const [course] = await db.insert(courses).values({ code: `ORG-${randomUUID()}`, title: "x" }).returning();
+    const [inactive] = await db
+      .insert(users)
+      .values({ email: `${randomUUID()}@example.com`, displayName: "Leaver", departmentId: dept.id, isActive: false })
+      .returning();
+    try {
+      await db.insert(enrollments).values({ userId: inactive.id, courseId: course.id, status: "completed" });
+      const rows = await getDepartmentCompletionBreakdown();
+      expect(rows).toEqual(
+        expect.arrayContaining([{ departmentId: dept.id, departmentName: dept.name, completed: 0, inProgress: 0, notStarted: 0 }])
+      );
+    } finally {
+      await db.delete(enrollments).where(eq(enrollments.courseId, course.id));
+      await db.delete(users).where(eq(users.id, inactive.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
       await db.delete(departments).where(eq(departments.id, dept.id));
     }
   });
@@ -109,14 +229,25 @@ describe("getMonthlyCompletions", () => {
     expect(rows[0].month).toBe(twoMonthsAgo);
   });
 
+  it("labels months correctly across a year boundary", async () => {
+    const rows = await getMonthlyCompletions(3, new Date(2027, 0, 15)); // Jan 15 2027
+    expect(rows.map((r) => r.month)).toEqual(["Nov 2026", "Dec 2026", "Jan 2027"]);
+  });
+
   it("counts a real completion in its correct month bucket, zero-filling months without one", async () => {
     const [course] = await db.insert(courses).values({ code: `ORG-${randomUUID()}`, title: "x" }).returning();
     const [user] = await db.insert(users).values({ email: `${randomUUID()}@example.com`, displayName: "x" }).returning();
+    const referenceInstant = new Date(2027, 0, 15); // Jan 15 2027
+    const decemberCompletion = new Date(2026, 11, 5); // Dec 5 2026
     try {
-      await db.insert(enrollments).values({ userId: user.id, courseId: course.id, status: "completed", completedAt: new Date() });
-      const rows = await getMonthlyCompletions(3);
-      expect(rows[2].completions).toBeGreaterThanOrEqual(1);
-      expect(rows[0].completions).toBeGreaterThanOrEqual(0);
+      await db
+        .insert(enrollments)
+        .values({ userId: user.id, courseId: course.id, status: "completed", completedAt: decemberCompletion });
+      const rows = await getMonthlyCompletions(3, referenceInstant);
+      expect(rows.map((r) => r.month)).toEqual(["Nov 2026", "Dec 2026", "Jan 2027"]);
+      expect(rows[0].completions).toBe(0); // Nov - zero-filled, no completion
+      expect(rows[1].completions).toBeGreaterThanOrEqual(1); // Dec - has our completion
+      expect(rows[2].completions).toBe(0); // Jan - zero-filled, no completion
     } finally {
       await db.delete(enrollments).where(eq(enrollments.courseId, course.id));
       await db.delete(users).where(eq(users.id, user.id));

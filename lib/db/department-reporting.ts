@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "./client";
 import { users, enrollments, courses } from "./schema";
 
@@ -25,11 +25,13 @@ export function bucketStatusesAsPercentages(statuses: string[]): DepartmentCompl
 }
 
 export async function getDepartmentCompletionStats(departmentId: string): Promise<DepartmentCompletionStats> {
+  // Only a currently-active member counts - a departed employee's history
+  // otherwise permanently skews the department's own completion percentages.
   const rows = await db
     .select({ status: enrollments.status })
     .from(enrollments)
     .innerJoin(users, eq(users.id, enrollments.userId))
-    .where(eq(users.departmentId, departmentId));
+    .where(and(eq(users.departmentId, departmentId), eq(users.isActive, true)));
 
   return bucketStatusesAsPercentages(rows.map((r) => r.status));
 }
@@ -54,7 +56,7 @@ export async function getDepartmentCourseBreakdown(departmentId: string): Promis
     .from(enrollments)
     .innerJoin(users, eq(users.id, enrollments.userId))
     .innerJoin(courses, eq(courses.id, enrollments.courseId))
-    .where(eq(users.departmentId, departmentId))
+    .where(and(eq(users.departmentId, departmentId), eq(users.isActive, true)))
     .orderBy(courses.title);
 
   const now = new Date();

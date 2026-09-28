@@ -39,6 +39,24 @@ describe("getDepartmentCompletionStats", () => {
       await db.delete(departments).where(eq(departments.id, dept.id));
     }
   });
+
+  it("does not count an inactive user's enrollment", async () => {
+    const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
+    const [course] = await db.insert(courses).values({ code: `REPORT-${randomUUID()}`, title: "x" }).returning();
+    const [inactive] = await db
+      .insert(users)
+      .values({ email: `${randomUUID()}@example.com`, displayName: "Leaver", departmentId: dept.id, isActive: false })
+      .returning();
+    try {
+      await db.insert(enrollments).values({ userId: inactive.id, courseId: course.id, status: "completed" });
+      expect(await getDepartmentCompletionStats(dept.id)).toEqual({ completed: 0, inProgress: 0, notStarted: 0 });
+    } finally {
+      await db.delete(enrollments).where(eq(enrollments.courseId, course.id));
+      await db.delete(users).where(eq(users.id, inactive.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+      await db.delete(departments).where(eq(departments.id, dept.id));
+    }
+  });
 });
 
 describe("bucketStatusesAsPercentages", () => {
@@ -85,6 +103,25 @@ describe("getDepartmentCourseBreakdown", () => {
       await db.delete(courses).where(eq(courses.id, course.id));
       await db.delete(departments).where(eq(departments.id, deptA.id));
       await db.delete(departments).where(eq(departments.id, deptB.id));
+    }
+  });
+
+  it("does not count an inactive user's enrollment", async () => {
+    const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
+    const [course] = await db.insert(courses).values({ code: `RPT-${randomUUID()}`, title: "x" }).returning();
+    const [inactive] = await db
+      .insert(users)
+      .values({ email: `${randomUUID()}@example.com`, displayName: "Leaver", departmentId: dept.id, isActive: false })
+      .returning();
+    const past = new Date(Date.now() - 86_400_000);
+    try {
+      await db.insert(enrollments).values({ userId: inactive.id, courseId: course.id, status: "in_progress", dueAt: past });
+      expect(await getDepartmentCourseBreakdown(dept.id)).toEqual([]);
+    } finally {
+      await db.delete(enrollments).where(eq(enrollments.courseId, course.id));
+      await db.delete(users).where(eq(users.id, inactive.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+      await db.delete(departments).where(eq(departments.id, dept.id));
     }
   });
 });
