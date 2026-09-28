@@ -64,10 +64,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     } else {
       const moved = await setUserDepartmentIfUnassignedOrSame(parsed.userId, parsed.departmentId);
       if (!moved) {
-        return NextResponse.json(
-          { error: "This person already belongs to a different department - only an Org Admin can move them." },
-          { status: 403 }
-        );
+        // Deliberately the same generic message/status as the canManageDepartment
+        // check above - varying it by the target's membership state would let a
+        // caller probe arbitrary userIds to learn who exists and who's already in
+        // another department.
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
     }
     await assignDepartmentCoursesToUser(parsed.userId, parsed.departmentId);
