@@ -105,6 +105,11 @@ export async function getMonthlyCompletions(months = 6, now: Date = new Date()):
     };
   });
 
+  // Deliberately NOT filtered to active users, unlike the current-state metrics
+  // above (compliance rate, overdue training). This is a historical volume
+  // chart - someone who completed training while employed really completed
+  // it, and excluding departed staff would make the trend dip every time
+  // someone leaves, understating real past activity.
   const rows = await db
     .select({ completedAt: enrollments.completedAt })
     .from(enrollments)
