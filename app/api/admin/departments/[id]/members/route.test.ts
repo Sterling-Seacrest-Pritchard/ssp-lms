@@ -127,6 +127,37 @@ describe("PATCH /api/admin/departments/[id]/members", () => {
     }
   });
 
+  it("returns 403 when a Department Admin tries to pull a user out of a different department", async () => {
+    const { dept, user } = await makeDeptAndUser();
+    const otherDept = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning().then(([d]) => d);
+    await db.update(users).set({ departmentId: otherDept.id }).where(eq(users.id, user.id));
+    const [admin] = await db
+      .insert(users)
+      .values({ entraObjectId: randomUUID(), email: `${randomUUID()}@example.com`, displayName: "Dept Admin" })
+      .returning();
+    await assignDepartmentAdmin(admin.id, dept.id, null);
+    vi.mocked(auth).mockResolvedValueOnce({
+      user: { email: admin.email, roles: ["DepartmentAdmin"] },
+    } as never);
+    try {
+      const request = new NextRequest(`http://localhost/api/admin/departments/${dept.id}/members`, {
+        method: "PATCH",
+        body: JSON.stringify({ userId: user.id }),
+      });
+      const response = await PATCH(request, { params: Promise.resolve({ id: dept.id }) });
+      expect(response.status).toBe(403);
+
+      const [row] = await db.select().from(users).where(eq(users.id, user.id));
+      expect(row.departmentId).toBe(otherDept.id);
+    } finally {
+      await db.delete(departmentAdmins).where(eq(departmentAdmins.userId, admin.id));
+      await db.delete(users).where(eq(users.id, user.id));
+      await db.delete(users).where(eq(users.id, admin.id));
+      await db.delete(departments).where(eq(departments.id, dept.id));
+      await db.delete(departments).where(eq(departments.id, otherDept.id));
+    }
+  });
+
   it("auto-assigns every course already assigned to the department to the newly-added user", async () => {
     const { dept, user } = await makeDeptAndUser();
     const [course] = await db.insert(courses).values({ code: `MEMBER-JOIN-${randomUUID()}`, title: "x" }).returning();

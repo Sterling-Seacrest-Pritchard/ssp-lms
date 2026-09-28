@@ -61,8 +61,33 @@ export async function listUsersNotInDepartment(
     .orderBy(users.displayName);
 }
 
+export async function listUnassignedUsers(): Promise<{ id: string; email: string; displayName: string }[]> {
+  return db
+    .select({ id: users.id, email: users.email, displayName: users.displayName })
+    .from(users)
+    .where(isNull(users.departmentId))
+    .orderBy(users.displayName);
+}
+
 export async function setUserDepartment(userId: string, departmentId: string | null): Promise<void> {
   await db.update(users).set({ departmentId, updatedAt: new Date() }).where(eq(users.id, userId));
+}
+
+/**
+ * Same move as `setUserDepartment`, but only takes effect if the user is
+ * currently unassigned or already in the target department - a Department
+ * Admin's own scope, so they can recruit an unassigned person but can't
+ * pull someone out of a department they don't administer. Returns whether
+ * the move actually happened, checked atomically in the UPDATE itself so a
+ * separate SELECT can't race a concurrent change.
+ */
+export async function setUserDepartmentIfUnassignedOrSame(userId: string, departmentId: string): Promise<boolean> {
+  const rows = await db
+    .update(users)
+    .set({ departmentId, updatedAt: new Date() })
+    .where(and(eq(users.id, userId), or(isNull(users.departmentId), eq(users.departmentId, departmentId))))
+    .returning({ id: users.id });
+  return rows.length > 0;
 }
 
 export async function clearUserDepartment(userId: string, departmentId: string): Promise<void> {

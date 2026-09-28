@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { isOrgAdmin } from "@/lib/roles";
-import { clearUserDepartment, setUserDepartment } from "@/lib/db/departments";
+import { clearUserDepartment, setUserDepartment, setUserDepartmentIfUnassignedOrSame } from "@/lib/db/departments";
 import { assignDepartmentCoursesToUser } from "@/lib/db/department-course-assignments";
 import { getDepartmentAdminDepartmentIds } from "@/lib/db/department-admins";
 import { getUserIdByEmail } from "@/lib/db/users";
@@ -55,7 +55,21 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    await setUserDepartment(parsed.userId, parsed.departmentId);
+    // A Department Admin can only pull in someone currently unassigned, or
+    // a no-op re-add of their own existing member - never poach a member
+    // out of a department they don't administer. Org Admins bypass this,
+    // since they can already act on either side of any move.
+    if (isOrgAdmin(session?.user?.roles)) {
+      await setUserDepartment(parsed.userId, parsed.departmentId);
+    } else {
+      const moved = await setUserDepartmentIfUnassignedOrSame(parsed.userId, parsed.departmentId);
+      if (!moved) {
+        return NextResponse.json(
+          { error: "This person already belongs to a different department - only an Org Admin can move them." },
+          { status: 403 }
+        );
+      }
+    }
     await assignDepartmentCoursesToUser(parsed.userId, parsed.departmentId);
     return NextResponse.json({ ok: true });
   } catch (error) {

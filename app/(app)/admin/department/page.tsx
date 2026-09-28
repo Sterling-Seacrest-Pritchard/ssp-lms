@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { getUserIdByEmail } from "@/lib/db/users";
 import { getDepartmentAdminDepartmentIds } from "@/lib/db/department-admins";
-import { listUsersNotInDepartment } from "@/lib/db/departments";
+import { listUnassignedUsers, listUsersNotInDepartment } from "@/lib/db/departments";
+import { isOrgAdmin } from "@/lib/roles";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { DepartmentView } from "./department-view";
 
@@ -43,9 +44,16 @@ export default async function DepartmentAdminPage(props: {
   const selectedDepartmentId =
     selectedFromQuery && departmentIds.includes(selectedFromQuery) ? selectedFromQuery : departmentIds[0];
 
+  // A real Org Admin (even while previewing this page) can still see and
+  // move users across any department, matching /admin/org. A real
+  // Department Admin only sees currently-unassigned people here - never
+  // another department's roster or emails - matching what the members API
+  // actually lets them do (see setUserDepartmentIfUnassignedOrSame).
   let eligibleUsers;
   try {
-    eligibleUsers = await listUsersNotInDepartment(selectedDepartmentId);
+    eligibleUsers = isOrgAdmin(session.user?.roles)
+      ? await listUsersNotInDepartment(selectedDepartmentId)
+      : (await listUnassignedUsers()).map((u) => ({ ...u, currentDepartmentName: null }));
   } catch {
     return <UnavailableState message="Could not load this department right now. Please try again in a moment." />;
   }
