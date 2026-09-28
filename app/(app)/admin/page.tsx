@@ -25,23 +25,26 @@ const orgAdminOnlyQuickLinks = [
 export default async function AdminHomePage() {
   const session = await auth();
   const displayName = session?.user?.name ?? currentUser.name;
-  const visibleQuickLinks = isOrgAdmin(session?.user?.roles)
-    ? [...quickLinks, ...orgAdminOnlyQuickLinks]
-    : quickLinks;
+  const isOrg = isOrgAdmin(session?.user?.roles);
+  const visibleQuickLinks = isOrg ? [...quickLinks, ...orgAdminOnlyQuickLinks] : quickLinks;
 
-  let stats;
-  try {
-    stats = await getOrgStats();
-  } catch {
-    return <UnavailableState message="Could not load the admin overview right now. Please try again in a moment." />;
+  // Company-wide numbers are Org-Admin-only, same split as visibleQuickLinks -
+  // a Department Admin gets their own department's numbers on /admin/department instead.
+  let statCards: { label: string; value: string | number }[] = [];
+  if (isOrg) {
+    let stats;
+    try {
+      stats = await getOrgStats();
+    } catch {
+      return <UnavailableState message="Could not load the admin overview right now. Please try again in a moment." />;
+    }
+    statCards = [
+      { label: "Total Employees", value: stats.totalEmployees },
+      { label: "Active Learners", value: stats.activeLearners },
+      { label: "Compliance Rate", value: `${stats.complianceRate}%` },
+      { label: "Overdue Training", value: stats.overdueTraining },
+    ];
   }
-
-  const statCards = [
-    { label: "Total Employees", value: stats.totalEmployees },
-    { label: "Active Learners", value: stats.activeLearners },
-    { label: "Compliance Rate", value: `${stats.complianceRate}%` },
-    { label: "Overdue Training", value: stats.overdueTraining },
-  ];
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-8">
@@ -52,16 +55,18 @@ export default async function AdminHomePage() {
         <p className="text-sm text-muted-foreground">Admin overview — {currentUser.department}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {statCards.map((stat) => (
-          <Card key={stat.label}>
-            <CardContent className="py-5">
-              <p className="text-xs text-muted-foreground">{stat.label}</p>
-              <p className="text-2xl font-semibold">{stat.value}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {statCards.length > 0 && (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {statCards.map((stat) => (
+            <Card key={stat.label}>
+              <CardContent className="py-5">
+                <p className="text-xs text-muted-foreground">{stat.label}</p>
+                <p className="text-2xl font-semibold">{stat.value}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <div>
         <h2 className="mb-4 text-lg font-medium">Quick Links</h2>
