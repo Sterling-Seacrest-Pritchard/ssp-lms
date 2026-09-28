@@ -1,17 +1,11 @@
 import Link from "next/link";
 import { BookOpen, Video, BarChart3, Users, ArrowRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { orgStats } from "@/lib/mock-data/reporting";
+import { UnavailableState } from "@/components/ui/unavailable-state";
+import { getOrgStats } from "@/lib/db/org-reporting";
 import { currentUser } from "@/lib/mock-data/courses";
 import { auth } from "@/auth";
 import { isOrgAdmin } from "@/lib/roles";
-
-const statCards = [
-  { label: "Total Employees", value: orgStats.totalEmployees },
-  { label: "Active Learners", value: orgStats.activeLearners },
-  { label: "Compliance Rate", value: `${orgStats.complianceRate}%` },
-  { label: "Overdue Training", value: orgStats.overdueTraining },
-];
 
 // Shown to every admin tier. The Org-Admin-only links live in
 // `orgAdminOnlyQuickLinks` below - matching `app-shell.tsx`'s nav, which
@@ -34,6 +28,20 @@ export default async function AdminHomePage() {
   const visibleQuickLinks = isOrgAdmin(session?.user?.roles)
     ? [...quickLinks, ...orgAdminOnlyQuickLinks]
     : quickLinks;
+
+  let stats;
+  try {
+    stats = await getOrgStats();
+  } catch {
+    return <UnavailableState message="Could not load the admin overview right now. Please try again in a moment." />;
+  }
+
+  const statCards = [
+    { label: "Total Employees", value: stats.totalEmployees },
+    { label: "Active Learners", value: stats.activeLearners },
+    { label: "Compliance Rate", value: `${stats.complianceRate}%` },
+    { label: "Overdue Training", value: stats.overdueTraining },
+  ];
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-8">
