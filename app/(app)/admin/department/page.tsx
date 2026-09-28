@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { getUserIdByEmail } from "@/lib/db/users";
 import { getDepartmentAdminDepartmentIds } from "@/lib/db/department-admins";
 import { listUnassignedUsers, listUsersNotInDepartment } from "@/lib/db/departments";
+import { getDepartmentCourseBreakdown } from "@/lib/db/department-reporting";
 import { isOrgAdmin } from "@/lib/roles";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { DepartmentView } from "./department-view";
@@ -49,11 +50,12 @@ export default async function DepartmentAdminPage(props: {
   // Department Admin only sees currently-unassigned people here - never
   // another department's roster or emails - matching what the members API
   // actually lets them do (see setUserDepartmentIfUnassignedOrSame).
-  let eligibleUsers;
+  let eligibleUsers, courseBreakdown;
   try {
     eligibleUsers = isOrgAdmin(session.user?.roles)
       ? await listUsersNotInDepartment(selectedDepartmentId)
       : (await listUnassignedUsers()).map((u) => ({ ...u, currentDepartmentName: null }));
+    courseBreakdown = await getDepartmentCourseBreakdown(selectedDepartmentId);
   } catch {
     return <UnavailableState message="Could not load this department right now. Please try again in a moment." />;
   }
@@ -63,6 +65,7 @@ export default async function DepartmentAdminPage(props: {
       departmentIds={departmentIds}
       selectedDepartmentId={selectedDepartmentId}
       eligibleUsers={eligibleUsers}
+      courseBreakdown={courseBreakdown}
     />
   );
 }

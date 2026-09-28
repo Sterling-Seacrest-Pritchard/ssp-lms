@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { getDepartmentWithMembers } from "@/lib/db/departments";
-import { getDepartmentCompletionStats } from "@/lib/db/department-reporting";
+import { getDepartmentCompletionStats, type DepartmentCourseBreakdownRow } from "@/lib/db/department-reporting";
 import { DepartmentCoursesClient } from "@/app/(app)/admin/org/departments/[id]/department-courses-client";
 import { RosterClient } from "@/app/(app)/admin/org/departments/[id]/roster-client";
 
@@ -11,10 +12,12 @@ export async function DepartmentView({
   departmentIds,
   selectedDepartmentId,
   eligibleUsers,
+  courseBreakdown,
 }: {
   departmentIds: string[];
   selectedDepartmentId: string;
   eligibleUsers: { id: string; email: string; displayName: string; currentDepartmentName: string | null }[];
+  courseBreakdown: DepartmentCourseBreakdownRow[];
 }) {
   let department, stats;
   try {
@@ -74,6 +77,44 @@ export async function DepartmentView({
         </CardHeader>
         <CardContent>
           <DepartmentCoursesClient departmentId={selectedDepartmentId} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Course Completion</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Course</TableHead>
+                <TableHead className="text-right">Completed</TableHead>
+                <TableHead className="text-right">In Progress</TableHead>
+                <TableHead className="text-right">Not Started</TableHead>
+                <TableHead className="text-right">Overdue</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {courseBreakdown.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                    No course activity yet.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                courseBreakdown.map((row) => (
+                  <TableRow key={row.courseId}>
+                    <TableCell className="font-medium">{row.courseTitle}</TableCell>
+                    <TableCell className="text-right">{row.completed}</TableCell>
+                    <TableCell className="text-right">{row.inProgress}</TableCell>
+                    <TableCell className="text-right">{row.notStarted}</TableCell>
+                    <TableCell className="text-right">{row.overdue}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </div>
