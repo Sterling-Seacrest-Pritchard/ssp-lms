@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { ReportsCharts } from "./reports-charts";
+import { MemberProgress } from "./member-progress";
 
 export default async function ReportsPage(props: { searchParams: Promise<{ dept?: string }> }) {
   const session = await auth();
@@ -64,8 +65,7 @@ export default async function ReportsPage(props: { searchParams: Promise<{ dept?
 
         <ReportsCharts departmentCompletion={departmentCompletion} monthlyCompletions={monthlyCompletions} />
 
-        <p className="text-sm text-muted-foreground">Member Progress coming up</p>
-        {members.length}
+        <MemberProgress members={members} exportHref="/api/admin/reports/export" />
       </div>
     );
   }
@@ -180,8 +180,10 @@ export default async function ReportsPage(props: { searchParams: Promise<{ dept?
         </CardContent>
       </Card>
 
-      <p className="text-sm text-muted-foreground">Member Progress coming up</p>
-      {members.length}
+      <MemberProgress
+        members={members}
+        exportHref={`/api/admin/reports/export?dept=${selectedDepartmentId}`}
+      />
     </div>
   );
 }
