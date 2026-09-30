@@ -8,10 +8,16 @@ import { listCourseStatusRows, type CourseStatusRow } from "@/lib/db/member-prog
 import { badRequest, isUuid } from "@/lib/api/errors";
 
 function csvField(value: string): string {
-  if (/[",\n]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+  // Neutralize Excel/Sheets formula-injection prefixes (=, +, -, @, tab, CR)
+  // by prepending a literal quote, which forces the cell to be read as text
+  // instead of evaluated - course titles and display names are free text an
+  // admin (course author, or synced from Entra) controls, not this app.
+  const needsPrefixGuard = /^[=+\-@\t\r]/.test(value);
+  const body = needsPrefixGuard ? `'${value}` : value;
+  if (needsPrefixGuard || /["\r\n,]/.test(body)) {
+    return `"${body.replace(/"/g, '""')}"`;
   }
-  return value;
+  return body;
 }
 
 function toCsv(rows: CourseStatusRow[]): string {
@@ -33,16 +39,15 @@ function toCsv(rows: CourseStatusRow[]): string {
 
 export async function GET(request: NextRequest) {
   const dept = request.nextUrl.searchParams.get("dept");
-
-  if (dept !== null) {
-    if (!isUuid(dept)) return badRequest("dept must be a UUID");
-    const realDepartments = await listDepartments();
-    if (!realDepartments.some((d) => d.id === dept)) return badRequest("dept not found");
-  }
-
   const session = await auth();
+
   if (!isOrgAdmin(session?.user?.roles)) {
-    if (dept === null) {
+    // A Department Admin's dept is checked entirely against their own real
+    // assignments before anything else runs - malformed, missing, and
+    // foreign all collapse to the same generic 403, so a caller can never
+    // learn "that dept exists" from a distinguishing status code before
+    // being told they can't see it.
+    if (dept === null || !isUuid(dept)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     const email = session?.user?.email;
@@ -51,6 +56,12 @@ export async function GET(request: NextRequest) {
     if (!administeredIds.includes(dept)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+  } else if (dept !== null) {
+    // An Org Admin can see any department, so a malformed/nonexistent dept
+    // here is just a bad request, not an authorization question.
+    if (!isUuid(dept)) return badRequest("dept must be a UUID");
+    const realDepartments = await listDepartments();
+    if (!realDepartments.some((d) => d.id === dept)) return badRequest("dept not found");
   }
 
   const rows = await listCourseStatusRows(dept ? { departmentId: dept } : {});

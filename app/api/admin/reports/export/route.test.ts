@@ -41,9 +41,36 @@ describe("GET /api/admin/reports/export", () => {
     }
   });
 
-  it("returns 400 for a dept that isn't a real department", async () => {
+  it("returns 400 for an Org Admin's dept that isn't a real department", async () => {
     const response = await GET(new NextRequest(`http://localhost/api/admin/reports/export?dept=${randomUUID()}`));
     expect(response.status).toBe(400);
+  });
+
+  it("returns 403 (not 400) for a Department Admin's malformed dept - never distinguishes bad input from not-yours before auth", async () => {
+    const [admin] = await db.insert(users).values({ email: `${randomUUID()}@example.com`, displayName: "Admin" }).returning();
+    vi.mocked(auth).mockResolvedValueOnce({ user: { email: admin.email, roles: ["DepartmentAdmin"] } } as never);
+    try {
+      const response = await GET(new NextRequest("http://localhost/api/admin/reports/export?dept=not-a-uuid"));
+      expect(response.status).toBe(403);
+    } finally {
+      await db.delete(users).where(eq(users.id, admin.id));
+    }
+  });
+
+  it("escapes a course title starting with an Excel formula-injection prefix", async () => {
+    const [course] = await db.insert(courses).values({ code: `MP-${randomUUID()}`, title: "=1+1" }).returning();
+    const [user] = await db.insert(users).values({ email: `${randomUUID()}@example.com`, displayName: "x" }).returning();
+    try {
+      await db.insert(enrollments).values({ userId: user.id, courseId: course.id, status: "not_started" });
+      const response = await GET(new NextRequest("http://localhost/api/admin/reports/export"));
+      const text = await response.text();
+      expect(text).not.toContain(",=1+1,");
+      expect(text).toContain("'=1+1");
+    } finally {
+      await db.delete(enrollments).where(eq(enrollments.userId, user.id));
+      await db.delete(users).where(eq(users.id, user.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+    }
   });
 
   it("returns a CSV with a UUID-based filename, never the department's raw name", async () => {
