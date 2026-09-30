@@ -6,6 +6,18 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { CourseStatusRow, MemberProgressRow } from "@/lib/db/member-progress";
 
+function formatStatus(status: string): string {
+  return status
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function formatDate(value: string | null): string {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
 export function MemberProgress({
   members,
   exportHref,
@@ -67,7 +79,7 @@ export function MemberProgress({
 
         <Table>
           <TableHeader>
-            <TableRow>
+            <TableRow className="bg-muted/40 hover:bg-muted/40">
               <TableHead>Name</TableHead>
               <TableHead>Email</TableHead>
               <TableHead className="text-right">Completed / Total</TableHead>
@@ -111,7 +123,7 @@ export function MemberProgress({
                         ) : (
                           <Table>
                             <TableHeader>
-                              <TableRow>
+                              <TableRow className="bg-muted/40 hover:bg-muted/40">
                                 <TableHead>Course</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead>Due</TableHead>
@@ -122,10 +134,10 @@ export function MemberProgress({
                             <TableBody>
                               {detail.map((row) => (
                                 <TableRow key={row.courseId}>
-                                  <TableCell>{row.courseTitle}</TableCell>
-                                  <TableCell>{row.status}</TableCell>
-                                  <TableCell>{row.dueAt ?? "—"}</TableCell>
-                                  <TableCell>{row.completedAt ?? "—"}</TableCell>
+                                  <TableCell className="font-medium">{row.courseTitle}</TableCell>
+                                  <TableCell>{formatStatus(row.status)}</TableCell>
+                                  <TableCell>{formatDate(row.dueAt)}</TableCell>
+                                  <TableCell>{formatDate(row.completedAt)}</TableCell>
                                   <TableCell className="text-right">{row.overdue ? "Yes" : "No"}</TableCell>
                                 </TableRow>
                               ))}

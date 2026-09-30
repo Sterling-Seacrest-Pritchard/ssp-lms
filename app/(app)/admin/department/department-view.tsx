@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { getDepartmentWithMembers } from "@/lib/db/departments";
-import { getDepartmentCompletionStats, type DepartmentCourseBreakdownRow } from "@/lib/db/department-reporting";
+import { type DepartmentCourseBreakdownRow } from "@/lib/db/department-reporting";
 import { DepartmentCoursesClient } from "@/app/(app)/admin/org/departments/[id]/department-courses-client";
 import { RosterClient } from "@/app/(app)/admin/org/departments/[id]/roster-client";
 
@@ -19,11 +19,10 @@ export async function DepartmentView({
   eligibleUsers: { id: string; email: string; displayName: string; currentDepartmentName: string | null }[];
   courseBreakdown: DepartmentCourseBreakdownRow[];
 }) {
-  let department, stats;
+  let department;
   try {
     department = await getDepartmentWithMembers(selectedDepartmentId);
     if (!department) notFound();
-    stats = await getDepartmentCompletionStats(selectedDepartmentId);
   } catch {
     return <UnavailableState message="Could not load this department right now. Please try again in a moment." />;
   }
@@ -46,17 +45,6 @@ export async function DepartmentView({
           </div>
         )}
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Completion</CardTitle>
-        </CardHeader>
-        <CardContent className="flex gap-6 text-sm">
-          <span>Completed: <span className="font-medium">{stats.completed}%</span></span>
-          <span>In progress: <span className="font-medium">{stats.inProgress}%</span></span>
-          <span>Not started: <span className="font-medium">{stats.notStarted}%</span></span>
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader>
