@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { upsertUser, getUserIdByEmail } from "./users";
+import { upsertUser, getUserIdByEmail, getUserDepartmentId } from "./users";
 import { db } from "./client";
 import { users, departments } from "./schema";
 
@@ -106,5 +106,31 @@ describe("getUserIdByEmail", () => {
 
   it("returns null for an unknown email", async () => {
     expect(await getUserIdByEmail(`unknown-${randomUUID()}@example.com`)).toBeNull();
+  });
+});
+
+describe("getUserDepartmentId", () => {
+  it("returns undefined for a userId that doesn't exist", async () => {
+    expect(await getUserDepartmentId(randomUUID())).toBeUndefined();
+  });
+
+  it("returns null for an existing user with no department", async () => {
+    const [user] = await db.insert(users).values({ email: `${randomUUID()}@example.com`, displayName: "x" }).returning();
+    try {
+      expect(await getUserDepartmentId(user.id)).toBeNull();
+    } finally {
+      await db.delete(users).where(eq(users.id, user.id));
+    }
+  });
+
+  it("returns the department id for an existing user with a department", async () => {
+    const dept = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning().then(([d]) => d);
+    const [user] = await db.insert(users).values({ email: `${randomUUID()}@example.com`, displayName: "x", departmentId: dept.id }).returning();
+    try {
+      expect(await getUserDepartmentId(user.id)).toBe(dept.id);
+    } finally {
+      await db.delete(users).where(eq(users.id, user.id));
+      await db.delete(departments).where(eq(departments.id, dept.id));
+    }
   });
 });

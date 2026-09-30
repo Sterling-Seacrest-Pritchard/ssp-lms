@@ -76,6 +76,16 @@ export async function getUserIdByEmail(email: string): Promise<string | null> {
 }
 
 /**
+ * `undefined` means no user with this id exists at all; `null` means the
+ * user exists but has no department. Callers that need to distinguish
+ * "doesn't exist" (404) from "not yours" (403) rely on this three-way split.
+ */
+export async function getUserDepartmentId(userId: string): Promise<string | null | undefined> {
+  const [row] = await db.select({ departmentId: users.departmentId }).from(users).where(eq(users.id, userId));
+  return row ? row.departmentId : undefined;
+}
+
+/**
  * The entraObjectId of every currently-active, previously-synced user - the
  * baseline `syncAssignedUsers` (lib/entra/sync.ts) diffs against to find
  * anyone no longer assigned in Entra. A read-only SELECT; the actual
