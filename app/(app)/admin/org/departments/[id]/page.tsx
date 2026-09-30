@@ -71,14 +71,9 @@ export default async function DepartmentDetailPage(
         </CardContent>
       </Card>
 
-      <Card className="border-destructive/30">
-        <CardHeader>
-          <CardTitle className="text-base">Danger Zone</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <DeleteDepartmentDialog departmentId={department.id} />
-        </CardContent>
-      </Card>
+      <div className="flex justify-end">
+        <DeleteDepartmentDialog departmentId={department.id} />
+      </div>
     </div>
   );
 }
