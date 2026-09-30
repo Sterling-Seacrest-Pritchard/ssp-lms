@@ -14,7 +14,7 @@ import { UnavailableState } from "@/components/ui/unavailable-state";
 import { ReportsCharts } from "./reports-charts";
 import { MemberProgress } from "./member-progress";
 
-export default async function ReportsPage(props: { searchParams: Promise<{ dept?: string }> }) {
+export default async function ReportsPage(props: { searchParams: Promise<{ dept?: string; view?: string }> }) {
   const session = await auth();
   const userEmail = session?.user?.email;
   if (!userEmail) notFound();
@@ -22,10 +22,16 @@ export default async function ReportsPage(props: { searchParams: Promise<{ dept?
   const userId = await getUserIdByEmail(userEmail);
   if (!userId) notFound();
 
-  // Real session role, never the client-side preview toggle - an Org Admin
-  // previewing the Department Admin view still sees company-wide data here,
-  // same as /admin/department's own real-role resolution below it.
-  if (isOrgAdmin(session.user?.roles)) {
+  // The role-preview toggle (components/shell/app-shell.tsx) is client-only
+  // localStorage state, invisible to this server component - it can't grant
+  // access on its own. Its Department Admin nav link instead passes
+  // ?view=department, which this page only ever uses to NARROW a real Org
+  // Admin's own view down to the scoped one (never to widen a Department
+  // Admin's - they already only reach the branch below regardless of this
+  // param). An Org Admin who never asked to preview still gets the full
+  // company-wide view.
+  const { view } = await props.searchParams;
+  if (isOrgAdmin(session.user?.roles) && view !== "department") {
     let stats, departmentCompletion, monthlyCompletions, members;
     try {
       [stats, departmentCompletion, monthlyCompletions, members] = await Promise.all([

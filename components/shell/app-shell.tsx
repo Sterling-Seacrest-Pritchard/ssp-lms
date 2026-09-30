@@ -52,7 +52,11 @@ const departmentAdminNav = [
   { href: "/courses", label: "Courses", icon: GraduationCap },
   { href: "/admin/content", label: "Content Authoring", icon: BookOpen },
   { href: "/admin/videos", label: "Video Library", icon: Video },
-  { href: "/admin/reports", label: "Reports", icon: BarChart3 },
+  // ?view=department tells /admin/reports to render the scoped Department
+  // Admin view even for a real Org Admin currently previewing this role -
+  // the page treats it as narrowing-only (never a way to widen access), see
+  // that page for the actual check.
+  { href: "/admin/reports?view=department", label: "Reports", icon: BarChart3 },
   { href: "/admin/department", label: "Department", icon: Users },
 ];
 
@@ -153,7 +157,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <nav className="flex flex-1 flex-col gap-1 px-3 py-4">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const active = pathname === item.href;
+            const active = pathname === item.href.split("?")[0];
             return (
               <Link
                 key={item.href}

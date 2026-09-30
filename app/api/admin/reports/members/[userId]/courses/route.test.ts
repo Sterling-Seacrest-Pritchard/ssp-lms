@@ -19,11 +19,24 @@ describe("GET /api/admin/reports/members/[userId]/courses", () => {
     expect(response.status).toBe(400);
   });
 
-  it("returns 404 for a userId that doesn't exist", async () => {
+  it("returns 404 for a userId that doesn't exist, for an Org Admin", async () => {
     const missingId = randomUUID();
     const request = new NextRequest(`http://localhost/api/admin/reports/members/${missingId}/courses`);
     const response = await GET(request, { params: Promise.resolve({ userId: missingId }) });
     expect(response.status).toBe(404);
+  });
+
+  it("returns 403 (not 404) for a Department Admin requesting a userId that doesn't exist - never distinguishes bad input from not-yours", async () => {
+    const [admin] = await db.insert(users).values({ email: `${randomUUID()}@example.com`, displayName: "Admin" }).returning();
+    vi.mocked(auth).mockResolvedValueOnce({ user: { email: admin.email, roles: ["DepartmentAdmin"] } } as never);
+    const missingId = randomUUID();
+    try {
+      const request = new NextRequest(`http://localhost/api/admin/reports/members/${missingId}/courses`);
+      const response = await GET(request, { params: Promise.resolve({ userId: missingId }) });
+      expect(response.status).toBe(403);
+    } finally {
+      await db.delete(users).where(eq(users.id, admin.id));
+    }
   });
 
   it("allows an Org Admin to view any user's courses", async () => {
