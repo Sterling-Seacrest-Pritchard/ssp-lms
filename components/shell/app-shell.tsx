@@ -114,6 +114,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, role, router]);
 
+  useEffect(() => {
+    function blockBackspaceNavigation(e: KeyboardEvent) {
+      if (e.key !== "Backspace") return;
+      const target = e.target as HTMLElement | null;
+      const isEditable =
+        target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
+      if (!isEditable) e.preventDefault();
+    }
+    window.addEventListener("keydown", blockBackspaceNavigation);
+    return () => window.removeEventListener("keydown", blockBackspaceNavigation);
+  }, []);
+
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
       const next = !prev;

@@ -36,6 +36,7 @@ export function DepartmentAdminsClient({
 }) {
   const router = useRouter();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const selectItems = eligibleUsers.map((user) => ({ value: user.id, label: user.displayName }));
   const [adding, setAdding] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +88,7 @@ export function DepartmentAdminsClient({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <Select value={selectedUserId} onValueChange={(value) => setSelectedUserId(value as string)}>
+        <Select items={selectItems} value={selectedUserId} onValueChange={(value) => setSelectedUserId(value as string)}>
           <SelectTrigger className="min-w-56">
             <SelectValue placeholder={eligibleUsers.length === 0 ? "No eligible users" : "Choose a user"} />
           </SelectTrigger>

@@ -33,27 +33,33 @@ export function RosterClient({
   eligibleUsers: EligibleUser[];
 }) {
   const router = useRouter();
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [adding, setAdding] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const selectItems = eligibleUsers.map((user) => ({ value: user.id, label: user.displayName }));
+
   async function handleAdd() {
-    if (!selectedUserId) return;
+    if (selectedUserIds.length === 0) return;
     setAdding(true);
     setError(null);
     try {
-      const response = await fetch(`/api/admin/departments/${departmentId}/members`, {
-        method: "PATCH",
-        body: JSON.stringify({ userId: selectedUserId }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        setError(body?.error ?? "Could not add member");
+      const results = await Promise.all(
+        selectedUserIds.map((userId) =>
+          fetch(`/api/admin/departments/${departmentId}/members`, {
+            method: "PATCH",
+            body: JSON.stringify({ userId }),
+          })
+        )
+      );
+      const failed = results.some((response) => !response.ok);
+      if (failed) {
+        setError("Could not add one or more members");
         setAdding(false);
         return;
       }
-      setSelectedUserId(null);
+      setSelectedUserIds([]);
       setAdding(false);
       router.refresh();
     } catch {
@@ -87,9 +93,14 @@ export function RosterClient({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <Select value={selectedUserId} onValueChange={(value) => setSelectedUserId(value as string)}>
+        <Select
+          items={selectItems}
+          multiple
+          value={selectedUserIds}
+          onValueChange={(value) => setSelectedUserIds(value)}
+        >
           <SelectTrigger className="min-w-56">
-            <SelectValue placeholder={eligibleUsers.length === 0 ? "No eligible users" : "Choose a user"} />
+            <SelectValue placeholder={eligibleUsers.length === 0 ? "No eligible users" : "Choose one or more users"} />
           </SelectTrigger>
           <SelectContent>
             {eligibleUsers.map((user) => (
@@ -100,8 +111,8 @@ export function RosterClient({
             ))}
           </SelectContent>
         </Select>
-        <Button onClick={handleAdd} disabled={!selectedUserId || adding}>
-          {adding ? "Adding…" : "Add"}
+        <Button onClick={handleAdd} disabled={selectedUserIds.length === 0 || adding}>
+          {adding ? "Adding…" : selectedUserIds.length > 1 ? `Add ${selectedUserIds.length}` : "Add"}
         </Button>
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}

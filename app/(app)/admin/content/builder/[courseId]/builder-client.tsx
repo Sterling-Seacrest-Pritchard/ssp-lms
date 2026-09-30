@@ -747,7 +747,7 @@ export function BuilderClient({
                       });
                       if (response.ok) {
                         setAddModuleOpen(false);
-                        router.refresh();
+                        window.location.reload();
                       }
                     }}
                     className="flex flex-col gap-4"
@@ -777,7 +777,7 @@ export function BuilderClient({
                         setTextTitle("");
                         setTextBody("");
                         setAddModuleOpen(false);
-                        router.refresh();
+                        window.location.reload();
                       } catch (err) {
                         setTextError(err instanceof Error ? err.message : "Failed to create text module");
                       } finally {
