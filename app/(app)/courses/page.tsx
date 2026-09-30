@@ -7,6 +7,7 @@ import { listEnrolledPublishedCourses, type RealCourseSummary } from "@/lib/db/q
 import { getUserIdByEmail } from "@/lib/db/users";
 import { getCourseProgressForLearner } from "@/lib/scorm/course-progress";
 import { auth } from "@/auth";
+import { formatDate } from "@/lib/format-date";
 
 const statusLabel: Record<string, string> = {
   "not-started": "Not started",
@@ -115,7 +116,7 @@ export default async function CoursesPage() {
                       </Badge>
                       {course.dueDate && (
                         <span className="text-xs text-muted-foreground">
-                          Due {course.dueDate.slice(0, 10)}
+                          Due {formatDate(course.dueDate)}
                         </span>
                       )}
                     </div>

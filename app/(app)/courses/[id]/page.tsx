@@ -17,6 +17,7 @@ import { isAdminRole } from "@/lib/roles";
 import { auth } from "@/auth";
 import { UnavailableState } from "@/components/ui/unavailable-state";
 import { isNextNotFoundError } from "@/lib/utils";
+import { formatDate } from "@/lib/format-date";
 
 export default async function CourseDetailPage(props: PageProps<"/courses/[id]">) {
   const { id } = await props.params;
@@ -107,7 +108,7 @@ export default async function CourseDetailPage(props: PageProps<"/courses/[id]">
             <h1 className="text-2xl font-semibold tracking-tight">{realCourse.title}</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {realCourse.department ?? "General"}
-              {realCourse.dueDate && ` · Due ${realCourse.dueDate.slice(0, 10)}`}
+              {realCourse.dueDate && ` · Due ${formatDate(realCourse.dueDate)}`}
             </p>
           </div>
           {realCourse.compliance && <Badge variant="secondary">Compliance required</Badge>}

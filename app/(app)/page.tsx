@@ -17,6 +17,7 @@ import { listEnrolledPublishedCourses, type RealCourseSummary } from "@/lib/db/q
 import { getCourseProgressForLearner } from "@/lib/scorm/course-progress";
 import { getUserIdByEmail } from "@/lib/db/users";
 import { auth } from "@/auth";
+import { formatDate } from "@/lib/format-date";
 
 interface DashboardCourse {
   id: string;
@@ -160,7 +161,7 @@ export default async function HomePage() {
                     <Progress value={course.progress} />
                     <span className="text-xs text-muted-foreground">
                       {course.progress}% complete
-                      {course.dueDate ? ` · Due ${course.dueDate.slice(0, 10)}` : ""}
+                      {course.dueDate ? ` · Due ${formatDate(course.dueDate)}` : ""}
                     </span>
                   </CardContent>
                 </Card>
