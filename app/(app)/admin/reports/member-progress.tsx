@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -29,12 +31,25 @@ export function MemberProgress({
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [courseRowsByUser, setCourseRowsByUser] = useState<Record<string, CourseStatusRow[] | "loading" | "error">>({});
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
 
   const filtered = members.filter((m) => {
     const matchesSearch =
       m.displayName.toLowerCase().includes(search.toLowerCase()) || m.email.toLowerCase().includes(search.toLowerCase());
     return matchesSearch && (!overdueOnly || m.overdueCount > 0);
   });
+
+  // Reset to page 1 whenever search/filter narrows or widens the result
+  // set, so a stale page number never lands on an out-of-range, empty page.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets pagination in response to a filter change, not a derivable render value
+    setPage(1);
+  }, [search, overdueOnly]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pageStart = (page - 1) * pageSize;
+  const paged = useMemo(() => filtered.slice(pageStart, pageStart + pageSize), [filtered, pageStart]);
 
   async function toggleExpand(userId: string) {
     if (expandedUserId === userId) {
@@ -87,14 +102,14 @@ export function MemberProgress({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.length === 0 ? (
+            {paged.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
                   No members match.
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.flatMap((member) => {
+              paged.flatMap((member) => {
                 const rows = [
                   <TableRow
                     key={member.userId}
@@ -153,6 +168,38 @@ export function MemberProgress({
             )}
           </TableBody>
         </Table>
+        {filtered.length > 0 && (
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>
+              {pageStart + 1}–{Math.min(pageStart + pageSize, filtered.length)} of {filtered.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Prev
+              </Button>
+              <span>
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

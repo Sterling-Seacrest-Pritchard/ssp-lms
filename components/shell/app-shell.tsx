@@ -129,7 +129,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : currentUser.avatarInitials;
 
   return (
-    <div className="flex min-h-screen w-full">
+    <div className="flex h-screen w-full overflow-hidden">
       <aside
         className={cn(
           "hidden shrink-0 flex-col overflow-hidden border-r bg-muted/30 transition-[width] duration-200 md:flex",
@@ -193,8 +193,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <div className="flex min-h-screen flex-1 flex-col">
-        <header className="flex items-center justify-between border-b px-6 py-3">
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <header className="flex shrink-0 items-center justify-between border-b px-6 py-3">
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
             <Button
               variant="ghost"
@@ -258,7 +258,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Avatar>
           </div>
         </header>
-        <main className="flex-1 bg-background p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto bg-background p-6">{children}</main>
       </div>
     </div>
   );
