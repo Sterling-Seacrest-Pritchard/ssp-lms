@@ -69,9 +69,8 @@ describe("requiresOrgAdminRole", () => {
     expect(requiresOrgAdminRole("/api/admin/entra-sync/cron")).toBe(false);
   });
 
-  it("gates the reports page, per the spec's resolution that it stays Org-Admin-only", () => {
-    expect(requiresOrgAdminRole("/admin/reports")).toBe(true);
-    expect(requiresOrgAdminRole("/admin/reports/anything")).toBe(true);
+  it("leaves /admin/reports open to any admin tier at the gate level (role-scoped in the page itself)", () => {
+    expect(requiresOrgAdminRole("/admin/reports")).toBe(false);
   });
 
   it("does NOT gate department-scoped actions a Department Admin should still reach", () => {

@@ -52,6 +52,7 @@ const departmentAdminNav = [
   { href: "/courses", label: "Courses", icon: GraduationCap },
   { href: "/admin/content", label: "Content Authoring", icon: BookOpen },
   { href: "/admin/videos", label: "Video Library", icon: Video },
+  { href: "/admin/reports", label: "Reports", icon: BarChart3 },
   { href: "/admin/department", label: "Department", icon: Users },
 ];
 

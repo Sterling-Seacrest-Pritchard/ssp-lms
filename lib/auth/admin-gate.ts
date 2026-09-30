@@ -47,8 +47,8 @@ export function adminForbiddenResponse(pathname: string, requestUrl: string): Ne
 /**
  * Does this path require the Org Admin tier specifically (not just any
  * admin)? Department creation, the top-level department list, roster
- * membership changes, the org-wide user directory/assignments, the Entra
- * resync trigger, and the reports page are Org-Admin-exclusive; a
+ * membership changes, the org-wide user directory/assignments, and the Entra
+ * resync trigger are Org-Admin-exclusive; a
  * department's OWN course-assignment endpoint stays open to a Department
  * Admin administering that department - `requiresAdminRole` already gates
  * the whole tree to "some admin," and per-route/query scoping (not this
@@ -65,7 +65,6 @@ export function adminForbiddenResponse(pathname: string, requestUrl: string): Ne
  */
 export function requiresOrgAdminRole(pathname: string): boolean {
   if (isAtOrUnder(pathname, "/admin/org")) return true;
-  if (isAtOrUnder(pathname, "/admin/reports")) return true;
   if (isAtOrUnder(pathname, "/api/admin/users")) return true;
   if (pathname === "/api/admin/entra-sync") return true;
   if (pathname === "/api/admin/departments") return true;
