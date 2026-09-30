@@ -1,6 +1,6 @@
 import { eq, ne, isNull, or, and, sql } from "drizzle-orm";
 import { db } from "./client";
-import { departments, users } from "./schema";
+import { departments, users, departmentAdmins, departmentCourseAssignments } from "./schema";
 import { isUuid } from "@/lib/api/errors";
 
 export async function listDepartments(): Promise<{ id: string; name: string }[]> {
@@ -98,4 +98,19 @@ export async function clearUserDepartment(userId: string, departmentId: string):
     .update(users)
     .set({ departmentId: null, updatedAt: new Date() })
     .where(and(eq(users.id, userId), eq(users.departmentId, departmentId)));
+}
+
+/**
+ * Members' and courses' `departmentId` clear to null on their own
+ * (`onDelete: "set null"`), but `department_admins` and
+ * `department_course_assignments` have NOT NULL department FKs with no
+ * cascade - those rows are deleted first, in the same transaction, or the
+ * department delete itself would fail with a foreign-key violation.
+ */
+export async function deleteDepartment(departmentId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.delete(departmentCourseAssignments).where(eq(departmentCourseAssignments.departmentId, departmentId));
+    await tx.delete(departmentAdmins).where(eq(departmentAdmins.departmentId, departmentId));
+    await tx.delete(departments).where(eq(departments.id, departmentId));
+  });
 }

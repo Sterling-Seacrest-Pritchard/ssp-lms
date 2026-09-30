@@ -54,6 +54,12 @@ describe("requiresOrgAdminRole", () => {
     expect(requiresOrgAdminRole("/api/admin/departments/abc/members")).toBe(false);
   });
 
+  it("gates deleting a department to Org Admin only, without catching its sub-routes", () => {
+    expect(requiresOrgAdminRole("/api/admin/departments/abc")).toBe(true);
+    expect(requiresOrgAdminRole("/api/admin/departments/abc/course-assignments")).toBe(false);
+    expect(requiresOrgAdminRole("/api/admin/departments/abc/members")).toBe(false);
+  });
+
   it("gates the org-wide user directory/assignments API and the Entra resync trigger", () => {
     expect(requiresOrgAdminRole("/api/admin/users")).toBe(true);
     expect(requiresOrgAdminRole("/api/admin/users/11111111-1111-1111-1111-111111111111/assignments")).toBe(true);

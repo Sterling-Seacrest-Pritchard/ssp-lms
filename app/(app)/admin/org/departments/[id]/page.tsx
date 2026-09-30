@@ -8,6 +8,7 @@ import { listAdminsForDepartment, listDepartmentAdminEligibleUsers } from "@/lib
 import { RosterClient } from "./roster-client";
 import { DepartmentCoursesClient } from "./department-courses-client";
 import { DepartmentAdminsClient } from "./department-admins-client";
+import { DeleteDepartmentDialog } from "./delete-department-dialog";
 
 export default async function DepartmentDetailPage(
   props: PageProps<"/admin/org/departments/[id]">
@@ -67,6 +68,15 @@ export default async function DepartmentDetailPage(
         </CardHeader>
         <CardContent>
           <DepartmentAdminsClient departmentId={department.id} admins={admins} eligibleUsers={eligibleAdmins} />
+        </CardContent>
+      </Card>
+
+      <Card className="border-destructive/30">
+        <CardHeader>
+          <CardTitle className="text-base">Danger Zone</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DeleteDepartmentDialog departmentId={department.id} />
         </CardContent>
       </Card>
     </div>
