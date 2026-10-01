@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "./client";
 import {
@@ -30,24 +31,24 @@ function slugifyTitleToCode(title: string): string {
   return slug || "COURSE";
 }
 
-// Admins no longer type a course code by hand - it's derived from the title
-// and only needs to satisfy the DB's `courses.code` UNIQUE constraint, so a
-// numeric suffix is appended on collision rather than surfacing an error.
-async function generateUniqueCourseCode(
-  title: string,
-  excludeCourseId?: string
-): Promise<string> {
+const MAX_CODE_INSERT_ATTEMPTS = 5;
+
+function isUniqueViolation(error: unknown): boolean {
+  return (error as { cause?: { code?: string } })?.cause?.code === "23505";
+}
+
+// Codes are derived from the title but are never a bare slug of it - a
+// random 6-char suffix is always appended, even with no collision. Other
+// admins can look up/attach to a course by its exact `code` (see the
+// access-checked-but-still-an-existence-oracle attach-by-code path in
+// app/api/admin/scorm-upload/route.ts), so a title-only slug would let
+// anyone who knows or guesses a course's title compute its code - turning
+// that lookup into a practical cross-department enumeration/squatting
+// vector. The entropy closes that without needing to touch that endpoint.
+function codeFromTitle(title: string): string {
   const base = slugifyTitleToCode(title);
-  let candidate = base;
-  for (let suffix = 2; ; suffix++) {
-    const conflicts = await db
-      .select({ id: courses.id })
-      .from(courses)
-      .where(eq(courses.code, candidate));
-    const taken = conflicts.some((row) => row.id !== excludeCourseId);
-    if (!taken) return candidate;
-    candidate = `${base}-${suffix}`;
-  }
+  const suffix = randomUUID().slice(0, 6).toUpperCase();
+  return `${base}-${suffix}`;
 }
 
 export async function createDraftCourse(
@@ -55,16 +56,26 @@ export async function createDraftCourse(
   departmentId?: string | null
 ): Promise<{ id: string }> {
   const resolvedTitle = title?.trim() || "Untitled Course";
-  const code = await generateUniqueCourseCode(resolvedTitle);
-  const [course] = await db
-    .insert(courses)
-    .values({
-      code,
-      title: resolvedTitle,
-      departmentId: departmentId ?? null,
-    })
-    .returning();
-  return { id: course.id };
+  for (let attempt = 0; attempt < MAX_CODE_INSERT_ATTEMPTS; attempt++) {
+    try {
+      const [course] = await db
+        .insert(courses)
+        .values({
+          code: codeFromTitle(resolvedTitle),
+          title: resolvedTitle,
+          departmentId: departmentId ?? null,
+        })
+        .returning();
+      return { id: course.id };
+    } catch (error) {
+      // The random suffix makes a real collision astronomically unlikely -
+      // this retry exists so the DB's UNIQUE constraint is the actual
+      // arbiter, closing the check-then-insert race a separate
+      // SELECT-then-insert approach would otherwise leave open.
+      if (!isUniqueViolation(error) || attempt === MAX_CODE_INSERT_ATTEMPTS - 1) throw error;
+    }
+  }
+  throw new Error("Could not generate a unique course code");
 }
 
 export interface CourseDetailsUpdate {
@@ -82,23 +93,45 @@ export async function updateCourseDetails(
 ): Promise<{ code?: string }> {
   const update: Record<string, unknown> = {};
   if (fields.title !== undefined) update.title = fields.title;
-  if (fields.code !== undefined) {
-    update.code = fields.code;
-  } else if (fields.title !== undefined && fields.title.trim()) {
-    // Code field is derived-only in the UI now - regenerate it from the new
-    // title whenever title changes without an explicit code override (the
-    // override path is still used by scripts/seed-real-courses.ts).
-    update.code = await generateUniqueCourseCode(fields.title, courseId);
-  }
+  if (fields.code !== undefined) update.code = fields.code;
   if (fields.departmentId !== undefined) update.departmentId = fields.departmentId;
   if (fields.compliance !== undefined) update.compliance = fields.compliance;
   if (fields.dueDate !== undefined) {
     update.dueDate = fields.dueDate ? new Date(fields.dueDate) : null;
   }
   if (fields.thumbnail !== undefined) update.thumbnail = fields.thumbnail;
-  if (Object.keys(update).length === 0) return {};
-  await db.update(courses).set(update).where(eq(courses.id, courseId));
-  return typeof update.code === "string" ? { code: update.code } : {};
+
+  // Code field is derived-only in the UI now - regenerate it from the new
+  // title whenever the title actually changes, unless an explicit code
+  // override is given (still used by scripts/seed-real-courses.ts). Compared
+  // against the stored title first so a no-op title PATCH (field blurred
+  // without editing) skips the regeneration instead of churning the code on
+  // every save.
+  let titleChanged = false;
+  if (fields.code === undefined && fields.title !== undefined && fields.title.trim()) {
+    const [current] = await db
+      .select({ title: courses.title })
+      .from(courses)
+      .where(eq(courses.id, courseId));
+    titleChanged = current?.title !== fields.title;
+  }
+
+  if (!titleChanged) {
+    if (Object.keys(update).length === 0) return {};
+    await db.update(courses).set(update).where(eq(courses.id, courseId));
+    return typeof update.code === "string" ? { code: update.code } : {};
+  }
+
+  for (let attempt = 0; attempt < MAX_CODE_INSERT_ATTEMPTS; attempt++) {
+    const code = codeFromTitle(fields.title as string);
+    try {
+      await db.update(courses).set({ ...update, code }).where(eq(courses.id, courseId));
+      return { code };
+    } catch (error) {
+      if (!isUniqueViolation(error) || attempt === MAX_CODE_INSERT_ATTEMPTS - 1) throw error;
+    }
+  }
+  throw new Error("Could not generate a unique course code");
 }
 
 export async function publishCourse(

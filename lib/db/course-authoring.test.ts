@@ -34,6 +34,15 @@ import {
 import { uploadScormPackage } from "@/lib/scorm/extract-package";
 import { gcsStorage } from "@/lib/storage/gcs";
 
+// Only mocked so one test (the code-collision-retry test below) can force
+// specific return values via mockReturnValueOnce; every other call - in this
+// file and in course-authoring.ts's own import of the same module - falls
+// through to the real implementation unchanged.
+vi.mock("node:crypto", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:crypto")>();
+  return { ...actual, randomUUID: vi.fn(actual.randomUUID) };
+});
+
 // Every video_assets row created by the two helpers below, tracked here so a
 // single file-level afterAll can clean them up regardless of which test path
 // creates one - per-test cleanup blocks in this file were never deleting
@@ -155,16 +164,43 @@ describe("createDraftCourse", () => {
     }
   });
 
-  it("appends a numeric suffix when two titles derive the same code", async () => {
+  it("gives two courses with the same title different, non-sequential codes", async () => {
+    // A sequential -2/-3 suffix would let one admin infer that a same-titled
+    // course exists in a department they can't see, just from their own
+    // save's result - the random suffix must differ every time, not count up.
     const title = `Collision Test ${randomUUID().slice(0, 8)}`;
     const { id: firstId } = await createDraftCourse(title);
     const { id: secondId } = await createDraftCourse(title);
     try {
       const [first] = await db.select().from(courses).where(eq(courses.id, firstId));
       const [second] = await db.select().from(courses).where(eq(courses.id, secondId));
-      expect(second.code).toBe(`${first.code}-2`);
+      const base = title.toUpperCase().replace(/[^A-Z0-9]+/g, "-");
+      expect(first.code).toMatch(new RegExp(`^${base}-[A-F0-9]{6}$`));
+      expect(second.code).toMatch(new RegExp(`^${base}-[A-F0-9]{6}$`));
+      expect(second.code).not.toBe(first.code);
+      expect(second.code).not.toBe(`${first.code}-2`);
     } finally {
       await db.delete(courses).where(inArray(courses.id, [firstId, secondId]));
+    }
+  });
+
+  it("retries with a new random suffix when the generated code collides on insert", async () => {
+    const title = `Retry Collision ${randomUUID().slice(0, 8)}`;
+    const base = title.toUpperCase().replace(/[^A-Z0-9]+/g, "-");
+    const collidingCode = `${base}-AAAAAA`;
+    const [seeded] = await db.insert(courses).values({ code: collidingCode, title: "Seed" }).returning();
+    // First attempt reproduces the pre-seeded code (forces a real 23505 from
+    // Postgres), second attempt gets a different suffix and should succeed.
+    vi.mocked(randomUUID)
+      .mockReturnValueOnce("aaaaaa00-0000-0000-0000-000000000000")
+      .mockReturnValueOnce("bbbbbb11-0000-0000-0000-000000000000");
+    try {
+      const { id } = await createDraftCourse(title);
+      const [course] = await db.select().from(courses).where(eq(courses.id, id));
+      expect(course.code).toBe(`${base}-BBBBBB`);
+      await db.delete(courses).where(eq(courses.id, id));
+    } finally {
+      await db.delete(courses).where(eq(courses.id, seeded.id));
     }
   });
 
@@ -203,6 +239,19 @@ describe("updateCourseDetails", () => {
       const [course] = await db.select().from(courses).where(eq(courses.id, id));
       expect(course.code).toMatch(/^RENAMED-COURSE-/);
       expect(result.code).toBe(course.code);
+    } finally {
+      await db.delete(courses).where(eq(courses.id, id));
+    }
+  });
+
+  it("leaves the code untouched when the title PATCH doesn't actually change it", async () => {
+    const { id } = await createDraftCourse("Stable Title");
+    try {
+      const [before] = await db.select().from(courses).where(eq(courses.id, id));
+      const result = await updateCourseDetails(id, { title: "Stable Title" });
+      const [after] = await db.select().from(courses).where(eq(courses.id, id));
+      expect(after.code).toBe(before.code);
+      expect(result.code).toBeUndefined();
     } finally {
       await db.delete(courses).where(eq(courses.id, id));
     }
