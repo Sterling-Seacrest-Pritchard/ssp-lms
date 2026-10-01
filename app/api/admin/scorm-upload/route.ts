@@ -8,6 +8,7 @@ import { parseManifest } from "@/lib/scorm/parse-manifest";
 import { readScormManifest, uploadScormPackage, assertLaunchFileExists } from "@/lib/scorm/extract-package";
 import { badRequest, isUuid, serverError } from "@/lib/api/errors";
 import { assertCourseAccess, resolveCourseCreationDepartmentId } from "@/lib/api/course-access";
+import { createDraftCourse } from "@/lib/db/course-authoring";
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,7 +21,6 @@ export async function POST(request: NextRequest) {
 
     const file = formData.get("package");
     const courseId = formData.get("courseId");
-    const courseCode = formData.get("courseCode");
     const courseTitle = formData.get("courseTitle");
     const moduleTitle = formData.get("moduleTitle");
 
@@ -28,10 +28,8 @@ export async function POST(request: NextRequest) {
       return badRequest("package and moduleTitle are required");
     }
     const attachToExistingCourse = typeof courseId === "string" && courseId.length > 0;
-    if (!attachToExistingCourse && (typeof courseCode !== "string" || typeof courseTitle !== "string")) {
-      return badRequest(
-        "courseCode and courseTitle are required unless courseId is provided"
-      );
+    if (!attachToExistingCourse && typeof courseTitle !== "string") {
+      return badRequest("courseTitle is required unless courseId is provided");
     }
     if (attachToExistingCourse && !isUuid(courseId as string)) {
       return badRequest("courseId must be a UUID");
@@ -49,7 +47,6 @@ export async function POST(request: NextRequest) {
     // but they exhaustively cover attachToExistingCourse true/false and each
     // either assigns `course` or returns early.
     let course!: typeof courses.$inferSelect;
-    let courseAlreadyResolved = false;
     let newCourseDepartmentId: string | null = null;
     if (attachToExistingCourse) {
       const [existing] = await db.select().from(courses).where(eq(courses.id, courseId as string));
@@ -59,30 +56,27 @@ export async function POST(request: NextRequest) {
       const denied = await assertCourseAccess(courseId as string);
       if (denied) return denied;
       course = existing;
-      courseAlreadyResolved = true;
     } else {
-      // A courseCode collision means we'd actually be reusing someone
-      // else's existing course, not creating one - resolve that BEFORE
-      // uploading anything, same as attach-mode above, so a denied request
-      // never orphans a package in Storage.
-      const [existingByCode] = await db.select().from(courses).where(eq(courses.code, courseCode as string));
-      if (existingByCode) {
-        const denied = await assertCourseAccess(existingByCode.id);
-        if (denied) return denied;
-        course = existingByCode;
-        courseAlreadyResolved = true;
-      } else {
-        const session = await auth();
-        const requestedDepartmentId = formData.get("departmentId");
-        const scoped = await resolveCourseCreationDepartmentId(
-          session,
-          typeof requestedDepartmentId === "string" && requestedDepartmentId ? requestedDepartmentId : null
-        );
-        if ("error" in scoped) {
-          return badRequest(scoped.error);
-        }
-        newCourseDepartmentId = scoped.departmentId;
+      // Create-mode never takes a client-supplied course code - there is no
+      // "attach by code" path anymore. Letting a caller pick `code` directly
+      // would mean anyone who knows or guesses another course's title can
+      // compute its code and probe for it by submitting it here: a 404
+      // (access denied) confirms it exists in a department they can't see,
+      // and a 200 both reveals its absence AND spends a real Storage upload
+      // + course row creating a throwaway course - a mutating side effect of
+      // a failed guess. createDraftCourse derives an unguessable,
+      // entropy-bearing code from the title instead, exactly like the
+      // Course Builder's "New Course" dialog (POST /api/admin/courses).
+      const session = await auth();
+      const requestedDepartmentId = formData.get("departmentId");
+      const scoped = await resolveCourseCreationDepartmentId(
+        session,
+        typeof requestedDepartmentId === "string" && requestedDepartmentId ? requestedDepartmentId : null
+      );
+      if ("error" in scoped) {
+        return badRequest(scoped.error);
       }
+      newCourseDepartmentId = scoped.departmentId;
     }
 
     const zipBuffer = Buffer.from(await file.arrayBuffer());
@@ -109,17 +103,10 @@ export async function POST(request: NextRequest) {
 
     const { prefix } = await uploadScormPackage(zipBuffer, moduleVersionId);
 
-    if (!courseAlreadyResolved) {
-      course = (
-        await db
-          .insert(courses)
-          .values({
-            code: courseCode as string,
-            title: courseTitle as string,
-            departmentId: newCourseDepartmentId,
-          })
-          .returning()
-      )[0];
+    if (!attachToExistingCourse) {
+      const { id } = await createDraftCourse(courseTitle as string, newCourseDepartmentId);
+      const [created] = await db.select().from(courses).where(eq(courses.id, id));
+      course = created;
     }
 
     const [courseModule] = await db

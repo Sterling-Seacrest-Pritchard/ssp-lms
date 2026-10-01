@@ -21,7 +21,6 @@ import { cn, formatBytes } from "@/lib/utils";
 export default function UploadScormPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [courseCode, setCourseCode] = useState("");
   const [courseTitle, setCourseTitle] = useState("");
   const [moduleTitle, setModuleTitle] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -49,7 +48,6 @@ export default function UploadScormPage() {
 
     const form = new FormData();
     form.set("package", file);
-    form.set("courseCode", courseCode);
     form.set("courseTitle", courseTitle);
     form.set("moduleTitle", moduleTitle);
 
@@ -97,14 +95,17 @@ export default function UploadScormPage() {
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="courseCode">Course Code</Label>
+                <Label htmlFor="courseTitle">Course Title</Label>
                 <Input
-                  id="courseCode"
-                  value={courseCode}
-                  onChange={(e) => setCourseCode(e.target.value)}
-                  placeholder="COMPLIANCE-2026-Q1"
+                  id="courseTitle"
+                  value={courseTitle}
+                  onChange={(e) => setCourseTitle(e.target.value)}
+                  placeholder="Q1 Compliance Training"
                   required
                 />
+                <p className="text-xs text-muted-foreground">
+                  Course code is generated automatically from the title.
+                </p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="moduleTitle">Module Title</Label>
@@ -116,16 +117,6 @@ export default function UploadScormPage() {
                   required
                 />
               </div>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="courseTitle">Course Title</Label>
-              <Input
-                id="courseTitle"
-                value={courseTitle}
-                onChange={(e) => setCourseTitle(e.target.value)}
-                placeholder="Q1 Compliance Training"
-                required
-              />
             </div>
 
             <Separator />

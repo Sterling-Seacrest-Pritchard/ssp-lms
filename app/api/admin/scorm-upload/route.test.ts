@@ -25,58 +25,46 @@ function buildSamplePackage() {
   return zip.toBuffer();
 }
 
+async function cleanupCourseByTitle(title: string, prefixes: string[] = []) {
+  const rows = await db.select().from(courses).where(eq(courses.title, title));
+  const courseIds = rows.map((r) => r.id);
+  if (courseIds.length) {
+    const mods = await db.select().from(modules).where(inArray(modules.courseId, courseIds));
+    const moduleIds = mods.map((m) => m.id);
+    if (moduleIds.length) {
+      const versions = await db.select().from(moduleVersions).where(inArray(moduleVersions.moduleId, moduleIds));
+      const versionIds = versions.map((v) => v.id);
+      if (versionIds.length) {
+        await db.delete(scormModuleVersions).where(inArray(scormModuleVersions.moduleVersionId, versionIds));
+        await db.update(modules).set({ currentVersionId: null }).where(inArray(modules.id, moduleIds));
+        await db.delete(moduleVersions).where(inArray(moduleVersions.id, versionIds));
+      }
+      await db.delete(modules).where(inArray(modules.id, moduleIds));
+    }
+    await db.delete(courses).where(inArray(courses.id, courseIds));
+  }
+  for (const prefix of prefixes) {
+    const { data } = await gcsStorage.from("ssp-lms-scorm-packages").list(prefix);
+    const paths = (data ?? []).map((f) => `${prefix}/${f.name}`);
+    if (paths.length) await gcsStorage.from("ssp-lms-scorm-packages").remove(paths);
+  }
+}
+
 describe("POST /api/admin/scorm-upload", () => {
-  const courseCode = `ROUTE-TEST-${randomUUID()}`;
+  const routeTestCourseTitle = `Route Test Course ${randomUUID()}`;
   let uploadedPrefix: string | undefined;
 
   afterAll(async () => {
-    // Clean up in FK dependency order: scormModuleVersions -> moduleVersions ->
-    // modules -> courses. modules.currentVersionId must be cleared before
-    // moduleVersions rows it points to can be deleted.
-    const [course] = await db.select().from(courses).where(eq(courses.code, courseCode));
-    if (course) {
-      const courseModules = await db.select().from(modules).where(eq(modules.courseId, course.id));
-      const moduleIds = courseModules.map((m) => m.id);
-
-      if (moduleIds.length) {
-        const versions = await db
-          .select()
-          .from(moduleVersions)
-          .where(inArray(moduleVersions.moduleId, moduleIds));
-        const versionIds = versions.map((v) => v.id);
-
-        if (versionIds.length) {
-          await db
-            .delete(scormModuleVersions)
-            .where(inArray(scormModuleVersions.moduleVersionId, versionIds));
-          await db
-            .update(modules)
-            .set({ currentVersionId: null })
-            .where(inArray(modules.id, moduleIds));
-          await db.delete(moduleVersions).where(inArray(moduleVersions.id, versionIds));
-        }
-
-        await db.delete(modules).where(inArray(modules.id, moduleIds));
-      }
-
-      await db.delete(courses).where(eq(courses.id, course.id));
-    }
-
-    if (uploadedPrefix) {
-      const { data } = await gcsStorage.from("ssp-lms-scorm-packages").list(uploadedPrefix);
-      const paths = (data ?? []).map((f) => `${uploadedPrefix}/${f.name}`);
-      if (paths.length) await gcsStorage.from("ssp-lms-scorm-packages").remove(paths);
-    }
+    await cleanupCourseByTitle(routeTestCourseTitle, uploadedPrefix ? [uploadedPrefix] : []);
   });
 
-  it("uploads a package and creates course/module/version rows", async () => {
+  it("uploads a package and creates course/module/version rows, with a code derived from the title", async () => {
     const form = new FormData();
     form.set(
       "package",
       new File([new Uint8Array(buildSamplePackage())], "package.zip", { type: "application/zip" })
     );
-    form.set("courseCode", courseCode);
-    form.set("courseTitle", "Route Test Course");
+    form.set("courseTitle", routeTestCourseTitle);
     form.set("moduleTitle", "Route Test Module");
 
     const request = new NextRequest("http://localhost/api/admin/scorm-upload", {
@@ -92,13 +80,13 @@ describe("POST /api/admin/scorm-upload", () => {
     expect(body.moduleVersionId).toBeTruthy();
     uploadedPrefix = body.prefix;
 
-    const [course] = await db.select().from(courses).where(eq(courses.code, courseCode));
-    expect(course.title).toBe("Route Test Course");
+    const [course] = await db.select().from(courses).where(eq(courses.title, routeTestCourseTitle));
+    expect(course.title).toBe(routeTestCourseTitle);
+    expect(course.code).toMatch(/^ROUTE-TEST-COURSE-[A-F0-9-]+$/);
   });
 
   it("rejects a request missing required fields", async () => {
     const form = new FormData();
-    form.set("courseCode", "missing-package");
 
     const request = new NextRequest("http://localhost/api/admin/scorm-upload", {
       method: "POST",
@@ -119,13 +107,13 @@ describe("POST /api/admin/scorm-upload", () => {
     );
     zip.addFile("index.html", Buffer.from("<html></html>"));
 
+    const title = `Route Test 2004 Course ${randomUUID()}`;
     const form = new FormData();
     form.set(
       "package",
       new File([new Uint8Array(zip.toBuffer())], "package.zip", { type: "application/zip" })
     );
-    form.set("courseCode", `${courseCode}-2004`);
-    form.set("courseTitle", "Route Test 2004 Course");
+    form.set("courseTitle", title);
     form.set("moduleTitle", "Route Test 2004 Module");
 
     const request = new NextRequest("http://localhost/api/admin/scorm-upload", {
@@ -143,20 +131,7 @@ describe("POST /api/admin/scorm-upload", () => {
       .where(eq(scormModuleVersions.moduleVersionId, body.moduleVersionId));
     expect(version.scormVersion).toBe("2004");
 
-    // Clean up this second course independently of the shared afterAll.
-    await db.delete(scormModuleVersions).where(eq(scormModuleVersions.moduleVersionId, body.moduleVersionId));
-    const [course2004] = await db.select().from(courses).where(eq(courses.code, `${courseCode}-2004`));
-    const modules2004 = await db.select().from(modules).where(eq(modules.courseId, course2004.id));
-    await db
-      .update(modules)
-      .set({ currentVersionId: null })
-      .where(inArray(modules.id, modules2004.map((m) => m.id)));
-    await db.delete(moduleVersions).where(eq(moduleVersions.id, body.moduleVersionId));
-    await db.delete(modules).where(inArray(modules.id, modules2004.map((m) => m.id)));
-    await db.delete(courses).where(eq(courses.id, course2004.id));
-    const { data } = await gcsStorage.from("ssp-lms-scorm-packages").list(body.prefix);
-    const paths = (data ?? []).map((f) => `${body.prefix}/${f.name}`);
-    if (paths.length) await gcsStorage.from("ssp-lms-scorm-packages").remove(paths);
+    await cleanupCourseByTitle(title, [body.prefix]);
   });
 
   it("rejects a manifest that references a launch file not present in the zip", async () => {
@@ -169,13 +144,13 @@ describe("POST /api/admin/scorm-upload", () => {
     );
     zip.addFile("unrelated.html", Buffer.from("<html></html>"));
 
+    const title = `Route Test Bad Ref ${randomUUID()}`;
     const form = new FormData();
     form.set(
       "package",
       new File([new Uint8Array(zip.toBuffer())], "package.zip", { type: "application/zip" })
     );
-    form.set("courseCode", `${courseCode}-badref`);
-    form.set("courseTitle", "Route Test Bad Ref");
+    form.set("courseTitle", title);
     form.set("moduleTitle", "Route Test Bad Ref Module");
 
     const request = new NextRequest("http://localhost/api/admin/scorm-upload", {
@@ -188,14 +163,14 @@ describe("POST /api/admin/scorm-upload", () => {
     const body = await response.json();
     expect(body.error).toMatch(/does_not_exist\.html/);
 
-    const rows = await db.select().from(courses).where(eq(courses.code, `${courseCode}-badref`));
+    const rows = await db.select().from(courses).where(eq(courses.title, title));
     expect(rows).toHaveLength(0);
   });
 
-  it("attaches to an existing course when courseId is provided, without needing courseCode/courseTitle", async () => {
+  it("attaches to an existing course when courseId is provided, without needing a course title", async () => {
     const [existingCourse] = await db
       .insert(courses)
-      .values({ code: `${courseCode}-attach`, title: "Attach Target Course" })
+      .values({ code: `ROUTE-TEST-ATTACH-${randomUUID()}`, title: "Attach Target Course" })
       .returning();
 
     const form = new FormData();
@@ -257,7 +232,7 @@ describe("POST /api/admin/scorm-upload", () => {
   it("404s attach mode for a Department Admin from a different department, leaving the course untouched", async () => {
     const [existingCourse] = await db
       .insert(courses)
-      .values({ code: `${courseCode}-attach-403`, title: "Attach Target Course" })
+      .values({ code: `ROUTE-TEST-ATTACH-403-${randomUUID()}`, title: "Attach Target Course" })
       .returning();
     const [otherDept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
     await db.update(courses).set({ departmentId: otherDept.id }).where(eq(courses.id, existingCourse.id));
@@ -294,6 +269,7 @@ describe("POST /api/admin/scorm-upload", () => {
   });
 
   it("rejects create-mode for a Department Admin who administers no department yet, uploading nothing", async () => {
+    const title = `Should Not Be Created ${randomUUID()}`;
     const email = `dept-admin-scorm-nodept-${randomUUID()}@example.com`;
     const [user] = await db
       .insert(users)
@@ -306,15 +282,14 @@ describe("POST /api/admin/scorm-upload", () => {
         "package",
         new File([new Uint8Array(buildSamplePackage())], "package.zip", { type: "application/zip" })
       );
-      form.set("courseCode", `${courseCode}-nodept`);
-      form.set("courseTitle", "Should Not Be Created");
+      form.set("courseTitle", title);
       form.set("moduleTitle", "Should Not Be Created");
 
       const request = new NextRequest("http://localhost/api/admin/scorm-upload", { method: "POST", body: form });
       const response = await POST(request);
       expect(response.status).toBe(400);
 
-      const rows = await db.select().from(courses).where(eq(courses.code, `${courseCode}-nodept`));
+      const rows = await db.select().from(courses).where(eq(courses.title, title));
       expect(rows).toHaveLength(0);
     } finally {
       await db.delete(users).where(eq(users.id, user.id));
@@ -322,6 +297,7 @@ describe("POST /api/admin/scorm-upload", () => {
   });
 
   it("auto-scopes a brand-new create-mode course to a Department Admin's single administered department", async () => {
+    const title = `Scoped Course ${randomUUID()}`;
     const email = `dept-admin-scorm-scoped-${randomUUID()}@example.com`;
     const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
     const [user] = await db
@@ -330,15 +306,13 @@ describe("POST /api/admin/scorm-upload", () => {
       .returning();
     await db.insert(departmentAdmins).values({ userId: user.id, departmentId: dept.id });
     vi.mocked(auth).mockResolvedValueOnce({ user: { email, roles: ["DepartmentAdmin"] } } as never);
-    const newCourseCode = `${courseCode}-scoped`;
     try {
       const form = new FormData();
       form.set(
         "package",
         new File([new Uint8Array(buildSamplePackage())], "package.zip", { type: "application/zip" })
       );
-      form.set("courseCode", newCourseCode);
-      form.set("courseTitle", "Scoped Course");
+      form.set("courseTitle", title);
       form.set("moduleTitle", "Scoped Module");
 
       const request = new NextRequest("http://localhost/api/admin/scorm-upload", { method: "POST", body: form });
@@ -346,17 +320,10 @@ describe("POST /api/admin/scorm-upload", () => {
       expect(response.status).toBe(200);
       const body = await response.json();
 
-      const [course] = await db.select().from(courses).where(eq(courses.code, newCourseCode));
+      const [course] = await db.select().from(courses).where(eq(courses.title, title));
       expect(course.departmentId).toBe(dept.id);
 
-      await db.delete(scormModuleVersions).where(eq(scormModuleVersions.moduleVersionId, body.moduleVersionId));
-      await db.update(modules).set({ currentVersionId: null }).where(eq(modules.courseId, course.id));
-      await db.delete(moduleVersions).where(eq(moduleVersions.id, body.moduleVersionId));
-      await db.delete(modules).where(eq(modules.courseId, course.id));
-      await db.delete(courses).where(eq(courses.id, course.id));
-      const { data } = await gcsStorage.from("ssp-lms-scorm-packages").list(body.prefix);
-      const paths = (data ?? []).map((f) => `${body.prefix}/${f.name}`);
-      if (paths.length) await gcsStorage.from("ssp-lms-scorm-packages").remove(paths);
+      await cleanupCourseByTitle(title, [body.prefix]);
     } finally {
       await db.delete(departmentAdmins).where(eq(departmentAdmins.userId, user.id));
       await db.delete(users).where(eq(users.id, user.id));
@@ -364,44 +331,36 @@ describe("POST /api/admin/scorm-upload", () => {
     }
   });
 
-  it("404s create-mode when the given courseCode collides with an existing course in a department the caller doesn't administer", async () => {
-    const collidingCode = `${courseCode}-collide`;
-    const [existingCourse] = await db
-      .insert(courses)
-      .values({ code: collidingCode, title: "Someone Else's Course" })
-      .returning();
-    const [otherDept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
-    await db.update(courses).set({ departmentId: otherDept.id }).where(eq(courses.id, existingCourse.id));
-    const email = `dept-admin-scorm-collide-${randomUUID()}@example.com`;
-    const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
-    const [user] = await db
-      .insert(users)
-      .values({ email, displayName: "Dept Admin", entraRole: "Department Admin" })
-      .returning();
-    await db.insert(departmentAdmins).values({ userId: user.id, departmentId: dept.id });
-    vi.mocked(auth).mockResolvedValueOnce({ user: { email, roles: ["DepartmentAdmin"] } } as never);
-    try {
+  it("never attaches to another course by title - two create-mode uploads with the same title make two independent courses", async () => {
+    // Closes the oracle/squat vector a client-supplied courseCode used to
+    // open: there is no title- or code-based lookup left in create-mode at
+    // all, so two admins (or one admin twice) using the same title always
+    // get two separate courses with independently-generated codes, never a
+    // silent attach to someone else's existing course.
+    const sharedTitle = `Shared Title ${randomUUID()}`;
+    const uploadOnce = async (moduleTitleValue: string) => {
       const form = new FormData();
       form.set(
         "package",
         new File([new Uint8Array(buildSamplePackage())], "package.zip", { type: "application/zip" })
       );
-      form.set("courseCode", collidingCode);
-      form.set("courseTitle", "Should Not Attach Here Either");
-      form.set("moduleTitle", "Should Not Be Created");
-
+      form.set("courseTitle", sharedTitle);
+      form.set("moduleTitle", moduleTitleValue);
       const request = new NextRequest("http://localhost/api/admin/scorm-upload", { method: "POST", body: form });
       const response = await POST(request);
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(200);
+      return response.json();
+    };
 
-      const attachedModules = await db.select().from(modules).where(eq(modules.courseId, existingCourse.id));
-      expect(attachedModules).toHaveLength(0);
+    const first = await uploadOnce("First Module");
+    const second = await uploadOnce("Second Module");
+    try {
+      const rows = await db.select().from(courses).where(eq(courses.title, sharedTitle));
+      expect(rows).toHaveLength(2);
+      expect(rows[0].id).not.toBe(rows[1].id);
+      expect(rows[0].code).not.toBe(rows[1].code);
     } finally {
-      await db.delete(courses).where(eq(courses.id, existingCourse.id));
-      await db.delete(departmentAdmins).where(eq(departmentAdmins.userId, user.id));
-      await db.delete(users).where(eq(users.id, user.id));
-      await db.delete(departments).where(eq(departments.id, dept.id));
-      await db.delete(departments).where(eq(departments.id, otherDept.id));
+      await cleanupCourseByTitle(sharedTitle, [first.prefix, second.prefix]);
     }
   });
 });
