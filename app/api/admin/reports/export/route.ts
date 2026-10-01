@@ -6,6 +6,7 @@ import { getDepartmentAdminDepartmentIds } from "@/lib/db/department-admins";
 import { listDepartments } from "@/lib/db/departments";
 import { listCourseStatusRows, type CourseStatusRow } from "@/lib/db/member-progress";
 import { badRequest, isUuid } from "@/lib/api/errors";
+import { formatDate } from "@/lib/format-date";
 
 function csvField(value: string): string {
   // Neutralize Excel/Sheets formula-injection prefixes (=, +, -, @, tab, CR)
@@ -28,8 +29,8 @@ function toCsv(rows: CourseStatusRow[]): string {
       csvField(r.email),
       csvField(r.courseTitle),
       r.status,
-      r.dueAt ?? "",
-      r.completedAt ?? "",
+      r.dueAt ? formatDate(r.dueAt) : "",
+      r.completedAt ? formatDate(r.completedAt) : "",
       String(r.overdue),
       String(r.compliance),
     ].join(",")

@@ -50,8 +50,8 @@ export async function PATCH(
       }
     }
 
-    await updateCourseDetails(courseId, fields);
-    return NextResponse.json({ ok: true });
+    const result = await updateCourseDetails(courseId, fields);
+    return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     return serverError(error);
   }

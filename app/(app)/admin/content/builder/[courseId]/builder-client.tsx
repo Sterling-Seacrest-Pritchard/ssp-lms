@@ -167,10 +167,18 @@ export function BuilderClient({
   );
 
   async function patchDetails(fields: Record<string, unknown>) {
-    await fetch(`/api/admin/courses/${course.id}`, {
+    const response = await fetch(`/api/admin/courses/${course.id}`, {
       method: "PATCH",
       body: JSON.stringify(fields),
     });
+    // Title edits re-derive `code` server-side (uniqueness needs a DB check),
+    // so sync the regenerated value back instead of letting it drift stale.
+    if ("title" in fields && response.ok) {
+      const body = await response.json().catch(() => null);
+      if (typeof body?.code === "string") {
+        setCourse((prev) => ({ ...prev, code: body.code }));
+      }
+    }
   }
 
   function updateField<K extends keyof CourseForBuilder>(key: K, value: CourseForBuilder[K]) {
@@ -455,12 +463,10 @@ export function BuilderClient({
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="code">Course Code</Label>
-              <Input
-                id="code"
-                value={course.code}
-                onChange={(e) => updateField("code", e.target.value)}
-                onBlur={() => patchDetails({ code: course.code })}
-              />
+              <Input id="code" value={course.code} disabled readOnly />
+              <p className="text-xs text-muted-foreground">
+                Generated automatically from the title.
+              </p>
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">

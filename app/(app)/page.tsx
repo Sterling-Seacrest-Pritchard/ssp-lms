@@ -182,7 +182,7 @@ export default async function HomePage() {
                     <div>
                       <p className="text-sm font-medium leading-snug">{update.title}</p>
                       <p className="text-xs text-muted-foreground">{update.description}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{update.date}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{formatDate(update.date)}</p>
                     </div>
                   </div>
                 );

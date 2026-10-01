@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "./client";
 import {
@@ -21,15 +20,47 @@ import {
 import { isUuid } from "@/lib/api/errors";
 import { deleteScormPackage } from "@/lib/scorm/extract-package";
 
+function slugifyTitleToCode(title: string): string {
+  const slug = title
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+    .replace(/-+$/, "");
+  return slug || "COURSE";
+}
+
+// Admins no longer type a course code by hand - it's derived from the title
+// and only needs to satisfy the DB's `courses.code` UNIQUE constraint, so a
+// numeric suffix is appended on collision rather than surfacing an error.
+async function generateUniqueCourseCode(
+  title: string,
+  excludeCourseId?: string
+): Promise<string> {
+  const base = slugifyTitleToCode(title);
+  let candidate = base;
+  for (let suffix = 2; ; suffix++) {
+    const conflicts = await db
+      .select({ id: courses.id })
+      .from(courses)
+      .where(eq(courses.code, candidate));
+    const taken = conflicts.some((row) => row.id !== excludeCourseId);
+    if (!taken) return candidate;
+    candidate = `${base}-${suffix}`;
+  }
+}
+
 export async function createDraftCourse(
   title?: string,
   departmentId?: string | null
 ): Promise<{ id: string }> {
+  const resolvedTitle = title?.trim() || "Untitled Course";
+  const code = await generateUniqueCourseCode(resolvedTitle);
   const [course] = await db
     .insert(courses)
     .values({
-      code: `DRAFT-${randomUUID().slice(0, 8)}`,
-      title: title ?? "Untitled Course",
+      code,
+      title: resolvedTitle,
       departmentId: departmentId ?? null,
     })
     .returning();
@@ -48,18 +79,26 @@ export interface CourseDetailsUpdate {
 export async function updateCourseDetails(
   courseId: string,
   fields: CourseDetailsUpdate
-): Promise<void> {
+): Promise<{ code?: string }> {
   const update: Record<string, unknown> = {};
   if (fields.title !== undefined) update.title = fields.title;
-  if (fields.code !== undefined) update.code = fields.code;
+  if (fields.code !== undefined) {
+    update.code = fields.code;
+  } else if (fields.title !== undefined && fields.title.trim()) {
+    // Code field is derived-only in the UI now - regenerate it from the new
+    // title whenever title changes without an explicit code override (the
+    // override path is still used by scripts/seed-real-courses.ts).
+    update.code = await generateUniqueCourseCode(fields.title, courseId);
+  }
   if (fields.departmentId !== undefined) update.departmentId = fields.departmentId;
   if (fields.compliance !== undefined) update.compliance = fields.compliance;
   if (fields.dueDate !== undefined) {
     update.dueDate = fields.dueDate ? new Date(fields.dueDate) : null;
   }
   if (fields.thumbnail !== undefined) update.thumbnail = fields.thumbnail;
-  if (Object.keys(update).length === 0) return;
+  if (Object.keys(update).length === 0) return {};
   await db.update(courses).set(update).where(eq(courses.id, courseId));
+  return typeof update.code === "string" ? { code: update.code } : {};
 }
 
 export async function publishCourse(

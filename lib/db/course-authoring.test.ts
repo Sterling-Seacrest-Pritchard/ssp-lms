@@ -145,6 +145,29 @@ describe("createDraftCourse", () => {
     }
   });
 
+  it("derives the code from the title", async () => {
+    const { id } = await createDraftCourse(`Fire Safety ${randomUUID().slice(0, 8)}`);
+    try {
+      const [course] = await db.select().from(courses).where(eq(courses.id, id));
+      expect(course.code).toMatch(/^FIRE-SAFETY-/);
+    } finally {
+      await db.delete(courses).where(eq(courses.id, id));
+    }
+  });
+
+  it("appends a numeric suffix when two titles derive the same code", async () => {
+    const title = `Collision Test ${randomUUID().slice(0, 8)}`;
+    const { id: firstId } = await createDraftCourse(title);
+    const { id: secondId } = await createDraftCourse(title);
+    try {
+      const [first] = await db.select().from(courses).where(eq(courses.id, firstId));
+      const [second] = await db.select().from(courses).where(eq(courses.id, secondId));
+      expect(second.code).toBe(`${first.code}-2`);
+    } finally {
+      await db.delete(courses).where(inArray(courses.id, [firstId, secondId]));
+    }
+  });
+
   it("sets the given departmentId on creation", async () => {
     const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
     try {
@@ -168,6 +191,29 @@ describe("updateCourseDetails", () => {
       expect(course.title).toBe("New Title");
       expect(course.departmentId).toBe(dept.id);
       expect(course.compliance).toBe(true);
+    } finally {
+      await db.delete(courses).where(eq(courses.id, id));
+    }
+  });
+
+  it("regenerates the code from a new title when no explicit code is given", async () => {
+    const { id } = await createDraftCourse();
+    try {
+      const result = await updateCourseDetails(id, { title: `Renamed Course ${randomUUID().slice(0, 8)}` });
+      const [course] = await db.select().from(courses).where(eq(courses.id, id));
+      expect(course.code).toMatch(/^RENAMED-COURSE-/);
+      expect(result.code).toBe(course.code);
+    } finally {
+      await db.delete(courses).where(eq(courses.id, id));
+    }
+  });
+
+  it("keeps an explicit code override instead of deriving one from the title", async () => {
+    const { id } = await createDraftCourse();
+    try {
+      await updateCourseDetails(id, { title: "Some Title", code: "CUSTOM-CODE" });
+      const [course] = await db.select().from(courses).where(eq(courses.id, id));
+      expect(course.code).toBe("CUSTOM-CODE");
     } finally {
       await db.delete(courses).where(eq(courses.id, id));
     }
