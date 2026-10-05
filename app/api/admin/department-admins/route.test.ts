@@ -86,6 +86,29 @@ describe("POST /api/admin/department-admins", () => {
     }
   });
 
+  it("assigns an Org Admin as a department admin too (the Entra Department Admin group now includes Org Admins)", async () => {
+    const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
+    const [user] = await db
+      .insert(users)
+      .values({ email: `${randomUUID()}@example.com`, displayName: "Test", entraRole: "Org Admin" })
+      .returning();
+    try {
+      const request = new NextRequest("http://localhost/api/admin/department-admins", {
+        method: "POST",
+        body: JSON.stringify({ userId: user.id, departmentId: dept.id }),
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const [row] = await db.select().from(departmentAdmins).where(eq(departmentAdmins.userId, user.id));
+      expect(row.departmentId).toBe(dept.id);
+    } finally {
+      await db.delete(departmentAdmins).where(eq(departmentAdmins.userId, user.id));
+      await db.delete(users).where(eq(users.id, user.id));
+      await db.delete(departments).where(eq(departments.id, dept.id));
+    }
+  });
+
   it("returns 400 when the target user does not currently hold the Department Admin role", async () => {
     const [dept] = await db.insert(departments).values({ name: `Dept-${randomUUID()}` }).returning();
     const [user] = await db

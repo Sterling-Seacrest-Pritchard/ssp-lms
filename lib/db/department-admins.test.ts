@@ -86,9 +86,14 @@ describe("getDepartmentAdminDepartmentIds", () => {
 });
 
 describe("listDepartmentAdminEligibleUsers", () => {
-  it("only returns users synced with the Department Admin Entra role, excluding existing admins of this department", async () => {
+  it("returns users synced with the Department Admin or Org Admin Entra role, excluding existing admins of this department", async () => {
     const dept = await seedDepartment();
     const eligible = await seedUser("Department Admin");
+    // Org Admins are commonly also the real admin of their own department
+    // now that the Entra "Department Admin" group includes the Org Admin
+    // group too - they must be an eligible candidate, not just a literal
+    // "Department Admin" entraRole.
+    const eligibleOrgAdmin = await seedUser("Org Admin");
     const alreadyAdmin = await seedUser("Department Admin");
     const learner = await seedUser("Learner");
     try {
@@ -96,11 +101,13 @@ describe("listDepartmentAdminEligibleUsers", () => {
       const result = await listDepartmentAdminEligibleUsers(dept.id);
       const ids = result.map((u) => u.id);
       expect(ids).toContain(eligible.id);
+      expect(ids).toContain(eligibleOrgAdmin.id);
       expect(ids).not.toContain(alreadyAdmin.id);
       expect(ids).not.toContain(learner.id);
     } finally {
       await cleanup([alreadyAdmin.id], [dept.id]);
       await db.delete(users).where(eq(users.id, eligible.id));
+      await db.delete(users).where(eq(users.id, eligibleOrgAdmin.id));
       await db.delete(users).where(eq(users.id, learner.id));
     }
   });

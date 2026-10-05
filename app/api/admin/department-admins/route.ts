@@ -27,8 +27,11 @@ export async function POST(request: NextRequest) {
     }
 
     const [target] = await db.select({ entraRole: users.entraRole }).from(users).where(eq(users.id, userId));
-    if (target?.entraRole !== "Department Admin") {
-      return badRequest("userId must currently hold the Department Admin role");
+    // Org Admins are commonly also the real admin of their own department -
+    // both Entra tiers are valid targets, matching
+    // listDepartmentAdminEligibleUsers's candidate query.
+    if (target?.entraRole !== "Department Admin" && target?.entraRole !== "Org Admin") {
+      return badRequest("userId must currently hold the Department Admin or Org Admin role");
     }
 
     try {

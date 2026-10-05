@@ -1,4 +1,4 @@
-import { and, eq, notInArray } from "drizzle-orm";
+import { and, eq, inArray, notInArray } from "drizzle-orm";
 import { db } from "./client";
 import { departmentAdmins, users } from "./schema";
 import { DuplicateAssignmentError } from "./course-assignments";
@@ -60,7 +60,12 @@ export async function listDepartmentAdminEligibleUsers(
       .where(eq(departmentAdmins.departmentId, departmentId))
   ).map((r) => r.userId);
 
-  const conditions = [eq(users.entraRole, "Department Admin")];
+  // Org Admins are commonly also the real admin of their own department now
+  // that the Entra "Department Admin" group includes the Org Admin group -
+  // both tiers are eligible candidates, not just a literal "Department
+  // Admin" entraRole (see app/api/admin/department-admins/route.ts, which
+  // enforces the same two-role check on the actual assignment).
+  const conditions = [inArray(users.entraRole, ["Department Admin", "Org Admin"])];
   if (alreadyAdminIds.length > 0) {
     conditions.push(notInArray(users.id, alreadyAdminIds));
   }

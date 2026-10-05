@@ -45,6 +45,13 @@ const orgAdminNav = [
   { href: "/admin/videos", label: "Video Library", icon: Video },
   { href: "/admin/reports", label: "Reports", icon: BarChart3 },
   { href: "/admin/org", label: "Org Admin", icon: Users },
+  // An Org Admin is commonly also the real Department Admin of their own
+  // department (the Entra group behind that role now includes the Org
+  // Admin group too) - the page itself already scopes purely to the
+  // caller's own department_admins rows regardless of Entra tier, so
+  // showing the tab here just surfaces access that already works via a
+  // direct URL.
+  { href: "/admin/department", label: "Department", icon: Users },
 ];
 
 const departmentAdminNav = [
