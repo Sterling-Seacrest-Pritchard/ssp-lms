@@ -158,7 +158,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   : "/logo-horizontal-blue.png"
               }
               alt="Sterling Seacrest Pritchard"
-              width={200}
+              width={258}
               height={26}
               priority
               className="h-auto w-full"
