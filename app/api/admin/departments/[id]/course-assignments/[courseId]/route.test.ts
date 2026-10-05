@@ -8,6 +8,13 @@ import { departments, users, courses, departmentAdmins, departmentCourseAssignme
 import { assignCourseToDepartment } from "@/lib/db/department-course-assignments";
 import { auth } from "@/auth";
 
+// assignCourseToDepartment() calls assignCourse() per member under the
+// hood, which sends a real Microsoft Graph email as noreply@sspins.com -
+// mocked so this file's tests never do that.
+vi.mock("@/lib/mail/notifications", () => ({
+  sendCourseAssignedEmail: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@/auth", () => ({
   auth: vi.fn().mockResolvedValue({ user: { email: "org-admin@example.com", roles: ["OrgAdmin"] } }),
 }));

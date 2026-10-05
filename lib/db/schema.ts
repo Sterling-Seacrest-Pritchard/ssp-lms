@@ -92,6 +92,10 @@ export const enrollments = pgTable(
     // an already-enrolled learner's deadline.
     dueAt: timestamp("due_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    // Set the first time the due-date-reminder cron emails this enrollment,
+    // so a daily run never re-sends for the same due date - see
+    // lib/mail/due-date-reminders.ts. Null means "not sent yet".
+    dueReminderSentAt: timestamp("due_reminder_sent_at", { withTimezone: true }),
     // Reserved for v2 auto-reenroll; unused this pass (see spec Decisions).
     cycleMonths: integer("cycle_months"),
     validUntil: timestamp("valid_until", { withTimezone: true }),

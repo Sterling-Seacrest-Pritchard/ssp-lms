@@ -120,6 +120,13 @@
       "when": 1789900000000,
       "tag": "0017_department_admins",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791208299236,
+      "tag": "0018_enrollments_due_reminder_sent_at",
+      "breakpoints": true
     }
   ]
 }

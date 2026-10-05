@@ -3,6 +3,7 @@ import { db } from "./client";
 import { courseAssignments, courses, users } from "./schema";
 import { ensureEnrollment } from "./enrollments";
 import { isUuid } from "@/lib/api/errors";
+import { sendCourseAssignedEmail } from "@/lib/mail/notifications";
 
 export interface UserWithStatus {
   id: string;
@@ -81,6 +82,31 @@ export async function assignCourse(
       throw new DuplicateAssignmentError("This course is already assigned to this user");
     }
     throw error;
+  }
+
+  // This is the one place a direct admin assign, a department bulk-assign,
+  // and a new department member picking up that department's existing
+  // courses all converge (see department-course-assignments.ts), so sending
+  // from here covers all three without duplicating the trigger. Best-effort:
+  // a failed/slow email must never undo or block an assignment that already
+  // committed above.
+  try {
+    const [course] = await db
+      .select({ title: courses.title, dueDate: courses.dueDate })
+      .from(courses)
+      .where(eq(courses.id, courseId));
+    const [user] = await db
+      .select({ email: users.email, displayName: users.displayName })
+      .from(users)
+      .where(eq(users.id, userId));
+    if (course && user) {
+      await sendCourseAssignedEmail(
+        { email: user.email, displayName: user.displayName },
+        { title: course.title, dueAt: course.dueDate }
+      );
+    }
+  } catch (error) {
+    console.error(`assignCourse: failed to send course-assigned email (course ${courseId}, user ${userId}):`, error);
   }
 }
 

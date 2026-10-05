@@ -17,7 +17,7 @@ interface GraphAppToken {
 let cachedToken: GraphAppToken | null = null;
 
 /** Extracted from the existing sign-in issuer URL rather than a duplicate env var. */
-function getTenantId(): string {
+export function getTenantId(): string {
   const issuer = process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER;
   const match = issuer?.match(/login\.microsoftonline\.com\/([^/]+)/);
   if (!match) {

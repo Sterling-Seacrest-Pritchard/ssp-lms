@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import {
@@ -14,6 +14,13 @@ import { db } from "./client";
 import { departments, users, courses, departmentAdmins, departmentCourseAssignments } from "./schema";
 import { assignDepartmentAdmin } from "./department-admins";
 import { assignCourseToDepartment } from "./department-course-assignments";
+
+// assignCourseToDepartment() calls assignCourse() per member under the
+// hood, which sends a real Microsoft Graph email as noreply@sspins.com -
+// mocked so this file's tests never do that.
+vi.mock("@/lib/mail/notifications", () => ({
+  sendCourseAssignedEmail: vi.fn().mockResolvedValue(undefined),
+}));
 
 async function makeUser(departmentId: string | null = null) {
   const [user] = await db

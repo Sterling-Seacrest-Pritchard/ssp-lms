@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import {
@@ -10,6 +10,15 @@ import {
 } from "./course-assignments";
 import { db } from "./client";
 import { courses, users, courseAssignments, enrollments } from "./schema";
+import { sendCourseAssignedEmail } from "@/lib/mail/notifications";
+
+// Every assignCourse() call in this file would otherwise attempt a real
+// Microsoft Graph sendMail as noreply@sspins.com - mocked everywhere so
+// these tests never send real email, and so the mock itself can be asserted
+// against for the one test that cares about the notification side effect.
+vi.mock("@/lib/mail/notifications", () => ({
+  sendCourseAssignedEmail: vi.fn().mockResolvedValue(undefined),
+}));
 
 async function seedUser(entraObjectId: string | null) {
   const [user] = await db
@@ -96,6 +105,41 @@ describe("assignCourse / listAssignmentsForUser / unassignCourse", () => {
       expect(enrollment).toBeDefined();
       expect(enrollment.status).toBe("not_started");
     } finally {
+      await db.delete(enrollments).where(eq(enrollments.userId, user.id));
+      await db.delete(courseAssignments).where(eq(courseAssignments.userId, user.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+      await db.delete(users).where(eq(users.id, user.id));
+    }
+  });
+
+  it("sends a course-assigned email after the assignment commits", async () => {
+    const user = await seedUser(randomUUID());
+    const course = await seedCourse();
+    vi.mocked(sendCourseAssignedEmail).mockClear();
+    try {
+      await assignCourse(course.id, user.id, "admin@example.com");
+
+      expect(sendCourseAssignedEmail).toHaveBeenCalledTimes(1);
+      const [notifiedUser, notifiedCourse] = vi.mocked(sendCourseAssignedEmail).mock.calls[0];
+      expect(notifiedUser).toEqual({ email: user.email, displayName: user.displayName });
+      expect(notifiedCourse.title).toBe("Test Course");
+    } finally {
+      await db.delete(enrollments).where(eq(enrollments.userId, user.id));
+      await db.delete(courseAssignments).where(eq(courseAssignments.userId, user.id));
+      await db.delete(courses).where(eq(courses.id, course.id));
+      await db.delete(users).where(eq(users.id, user.id));
+    }
+  });
+
+  it("still commits the assignment even if the notification email fails", async () => {
+    const user = await seedUser(randomUUID());
+    const course = await seedCourse();
+    vi.mocked(sendCourseAssignedEmail).mockRejectedValueOnce(new Error("Graph sendMail failed"));
+    try {
+      await expect(assignCourse(course.id, user.id, "admin@example.com")).resolves.toBeUndefined();
+      expect(await listAssignmentsForUser(user.id)).toHaveLength(1);
+    } finally {
+      vi.mocked(sendCourseAssignedEmail).mockResolvedValue(undefined);
       await db.delete(enrollments).where(eq(enrollments.userId, user.id));
       await db.delete(courseAssignments).where(eq(courseAssignments.userId, user.id));
       await db.delete(courses).where(eq(courses.id, course.id));

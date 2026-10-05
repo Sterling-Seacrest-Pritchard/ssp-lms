@@ -1,0 +1,1 @@
+ALTER TABLE "enrollments" ADD COLUMN "due_reminder_sent_at" timestamp with time zone;

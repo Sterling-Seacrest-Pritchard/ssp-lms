@@ -11,6 +11,12 @@ vi.mock("@/auth", () => ({
   auth: vi.fn().mockResolvedValue({ user: { email: "org-admin@example.com", roles: ["OrgAdmin"] } }),
 }));
 
+// The POST handler's assignCourse() call sends a real Microsoft Graph email
+// as noreply@sspins.com - mocked so this file's tests never do that.
+vi.mock("@/lib/mail/notifications", () => ({
+  sendCourseAssignedEmail: vi.fn().mockResolvedValue(undefined),
+}));
+
 describe("GET /api/admin/users/[userId]/assignments", () => {
   it("allows an Org Admin", async () => {
     const [user] = await db

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import {
@@ -10,6 +10,13 @@ import {
 import { DuplicateAssignmentError } from "./course-assignments";
 import { db } from "./client";
 import { courses, users, departments, courseAssignments, departmentCourseAssignments, enrollments } from "./schema";
+
+// assignCourseToDepartment/assignDepartmentCoursesToUser both call
+// assignCourse() per member under the hood, which sends a real Microsoft
+// Graph email as noreply@sspins.com - mocked so these tests never do that.
+vi.mock("@/lib/mail/notifications", () => ({
+  sendCourseAssignedEmail: vi.fn().mockResolvedValue(undefined),
+}));
 
 async function seedDepartment() {
   const [department] = await db
