@@ -1,14 +1,21 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SessionProvider } from "next-auth/react";
 import { auth } from "@/auth";
 import { ThemeProvider } from "@/components/theme-provider";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+// Self-hosted per SSP brand guidelines (Nunito for sub-headers/copy, per
+// Marketing's 2026-10 clarification) - the variable font file is vendored in
+// app/fonts/ rather than fetched from Google Fonts at build time, so the app
+// never depends on Google's CDN being reachable.
+const nunito = localFont({
+  src: "./fonts/Nunito-Variable.woff2",
+  variable: "--font-nunito",
+  weight: "200 1000",
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
@@ -27,7 +34,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${nunito.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
