@@ -14,6 +14,19 @@ export function getInitials(name: string) {
     .toUpperCase()
 }
 
+/**
+ * Notification `linkHref` values are stored as plain, unvalidated `text` -
+ * every current write path hardcodes an internal `/courses/{uuid}` path, but
+ * nothing at the schema or write layer stops a future caller from putting
+ * something else there. Both the dashboard's `<Link href>` and the
+ * notification bell's `router.push` navigate directly on this value, so a
+ * `javascript:`-scheme (or similar) string would execute on click/navigate -
+ * restrict to same-origin absolute paths only, never an external/script URL.
+ */
+export function isSafeInternalHref(href: string): boolean {
+  return href.startsWith("/") && !href.startsWith("//")
+}
+
 export function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
   const units = ["KB", "MB", "GB"]

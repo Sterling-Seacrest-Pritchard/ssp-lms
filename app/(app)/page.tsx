@@ -18,6 +18,7 @@ import { getCourseProgressForLearner } from "@/lib/scorm/course-progress";
 import { getUserIdByEmail } from "@/lib/db/users";
 import { listNotificationsForUser, type NotificationRow } from "@/lib/notifications/queries";
 import type { NotificationType } from "@/lib/notifications/create";
+import { isSafeInternalHref } from "@/lib/utils";
 import { auth } from "@/auth";
 import { formatDate } from "@/lib/format-date";
 
@@ -200,7 +201,7 @@ export default async function HomePage() {
                       </div>
                     </div>
                   );
-                  return notification.linkHref ? (
+                  return notification.linkHref && isSafeInternalHref(notification.linkHref) ? (
                     <Link
                       key={notification.id}
                       href={notification.linkHref}

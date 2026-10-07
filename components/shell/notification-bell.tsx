@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { NotificationRow } from "@/lib/notifications/queries";
 import { formatDate } from "@/lib/format-date";
+import { isSafeInternalHref } from "@/lib/utils";
 
 export function NotificationBell() {
   const router = useRouter();
@@ -49,7 +50,7 @@ export function NotificationBell() {
         prev.map((n) => (n.id === notification.id ? { ...n, readAt: new Date().toISOString() } : n))
       );
     }
-    if (notification.linkHref) {
+    if (notification.linkHref && isSafeInternalHref(notification.linkHref)) {
       router.push(notification.linkHref);
     }
   }
