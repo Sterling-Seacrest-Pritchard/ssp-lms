@@ -28,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { NotificationBell } from "@/components/shell/notification-bell";
 import { currentUser } from "@/lib/mock-data/courses";
 import { cn, getInitials } from "@/lib/utils";
 import { roleFromClaims, type Role } from "@/lib/roles";
@@ -271,6 +272,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 Sign in with Microsoft
               </Button>
             )}
+            {isAuthenticated && <NotificationBell />}
             <Avatar>
               {session?.user?.image && <AvatarImage src={session.user.image} alt={displayName} />}
               <AvatarFallback>{avatarInitials}</AvatarFallback>
