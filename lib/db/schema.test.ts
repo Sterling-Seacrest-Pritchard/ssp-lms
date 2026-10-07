@@ -16,6 +16,8 @@ import {
   quizChoices,
   quizAttemptAnswers,
   textModuleVersions,
+  notifications,
+  notificationBroadcasts,
 } from "./schema";
 
 describe("minimal SCORM schema", () => {
@@ -291,5 +293,29 @@ describe("text module schema", () => {
       await db.delete(modules).where(eq(modules.id, mod.id));
       await db.delete(courses).where(eq(courses.id, course.id));
     }
+  });
+});
+
+describe("notifications schema", () => {
+  it("inserts a notification and a broadcast, and reads them back", async () => {
+    const [user] = await db
+      .insert(users)
+      .values({ email: `notif-schema-${randomUUID()}@example.com`, displayName: "Schema Test User" })
+      .returning();
+    const [broadcast] = await db
+      .insert(notificationBroadcasts)
+      .values({ authorEmail: "admin@example.com", title: "Broadcast Title", body: "Broadcast body", targetScope: "all" })
+      .returning();
+    const [notification] = await db
+      .insert(notifications)
+      .values({ userId: user.id, type: "admin_broadcast", title: "Broadcast Title", body: "Broadcast body", broadcastId: broadcast.id })
+      .returning();
+
+    expect(notification.readAt).toBeNull();
+    expect(notification.broadcastId).toBe(broadcast.id);
+
+    await db.delete(notifications).where(eq(notifications.id, notification.id));
+    await db.delete(notificationBroadcasts).where(eq(notificationBroadcasts.id, broadcast.id));
+    await db.delete(users).where(eq(users.id, user.id));
   });
 });

@@ -76,6 +76,31 @@ export const departmentAdmins = pgTable(
   (table) => [unique().on(table.userId, table.departmentId)]
 );
 
+export const notificationBroadcasts = pgTable("notification_broadcasts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  authorEmail: text("author_email").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  // 'all' | 'department' - plain text, app-validated. See Global Constraints.
+  targetScope: text("target_scope").notNull(),
+  targetDepartmentId: uuid("target_department_id").references(() => departments.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const notifications = pgTable("notifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // 'course_assigned' | 'due_soon' | 'overdue' | 'admin_broadcast' - plain text,
+  // app-validated. See Global Constraints.
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  linkHref: text("link_href"),
+  readAt: timestamp("read_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  broadcastId: uuid("broadcast_id").references(() => notificationBroadcasts.id),
+});
+
 export const enrollments = pgTable(
   "enrollments",
   {
@@ -96,6 +121,9 @@ export const enrollments = pgTable(
     // so a daily run never re-sends for the same due date - see
     // lib/mail/due-date-reminders.ts. Null means "not sent yet".
     dueReminderSentAt: timestamp("due_reminder_sent_at", { withTimezone: true }),
+    // Set the first time the due-date cron's overdue pass emails/notifies this
+    // enrollment, mirroring dueReminderSentAt - see lib/mail/due-date-reminders.ts.
+    overdueNotifiedAt: timestamp("overdue_notified_at", { withTimezone: true }),
     // Reserved for v2 auto-reenroll; unused this pass (see spec Decisions).
     cycleMonths: integer("cycle_months"),
     validUntil: timestamp("valid_until", { withTimezone: true }),

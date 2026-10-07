@@ -127,6 +127,13 @@
       "when": 1791208299236,
       "tag": "0018_enrollments_due_reminder_sent_at",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791379430041,
+      "tag": "0019_notifications_schema",
+      "breakpoints": true
     }
   ]
 }
