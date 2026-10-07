@@ -3,7 +3,7 @@ import { db } from "./client";
 import { courseAssignments, courses, users } from "./schema";
 import { ensureEnrollment } from "./enrollments";
 import { isUuid } from "@/lib/api/errors";
-import { sendCourseAssignedEmail } from "@/lib/mail/notifications";
+import { notifyCourseAssigned } from "@/lib/notifications/course-assigned";
 
 export interface UserWithStatus {
   id: string;
@@ -100,9 +100,10 @@ export async function assignCourse(
       .from(users)
       .where(eq(users.id, userId));
     if (course && user) {
-      await sendCourseAssignedEmail(
+      await notifyCourseAssigned(
+        userId,
         { email: user.email, displayName: user.displayName },
-        { title: course.title, dueAt: course.dueDate }
+        { courseId, title: course.title, dueAt: course.dueDate }
       );
     }
   } catch (error) {

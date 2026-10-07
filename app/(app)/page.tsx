@@ -7,15 +7,18 @@ import {
   ArrowRight,
   ShieldCheck,
   UserPlus,
-  CheckCircle2,
+  AlertTriangle,
+  Megaphone,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { currentUser } from "@/lib/mock-data/courses";
-import { updates, type UpdateType } from "@/lib/mock-data/updates";
 import { listEnrolledPublishedCourses, type RealCourseSummary } from "@/lib/db/queries";
 import { getCourseProgressForLearner } from "@/lib/scorm/course-progress";
 import { getUserIdByEmail } from "@/lib/db/users";
+import { listNotificationsForUser, type NotificationRow } from "@/lib/notifications/queries";
+import type { NotificationType } from "@/lib/notifications/create";
+import { isSafeInternalHref } from "@/lib/utils";
 import { auth } from "@/auth";
 import { formatDate } from "@/lib/format-date";
 
@@ -43,11 +46,11 @@ function autoThumbnailFor(courseId: string): string {
   return THUMBNAIL_ROTATION[hash % THUMBNAIL_ROTATION.length];
 }
 
-const updateIcon: Record<UpdateType, typeof Bell> = {
-  "due-soon": CalendarClock,
-  "new-assignment": UserPlus,
-  completed: CheckCircle2,
-  reminder: Bell,
+const updateIcon: Record<NotificationType, typeof Bell> = {
+  course_assigned: UserPlus,
+  due_soon: CalendarClock,
+  overdue: AlertTriangle,
+  admin_broadcast: Megaphone,
 };
 
 const quickLinks = [
@@ -60,11 +63,16 @@ export default async function HomePage() {
   const displayName = session?.user?.name ?? currentUser.name;
 
   let dashboardCourses: DashboardCourse[] = [];
+  let recentNotifications: NotificationRow[] = [];
   try {
     const userEmail = session?.user?.email;
     const userId = userEmail ? await getUserIdByEmail(userEmail) : null;
     if (userId) {
-      const published: RealCourseSummary[] = await listEnrolledPublishedCourses(userId);
+      const [published, notifications]: [RealCourseSummary[], NotificationRow[]] = await Promise.all([
+        listEnrolledPublishedCourses(userId),
+        listNotificationsForUser(userId, { limit: 10 }),
+      ]);
+      recentNotifications = notifications;
       dashboardCourses = await Promise.all(
         published.map(async (course) => {
           const { status, progress } = await getCourseProgressForLearner(course.id, userId);
@@ -174,26 +182,38 @@ export default async function HomePage() {
           <h2 className="mb-4 text-lg font-medium">Updates</h2>
           <Card>
             <CardContent className="flex flex-col divide-y py-0">
-              {updates.map((update) => {
-                const Icon = updateIcon[update.type];
-                const content = (
-                  <div className="flex items-start gap-3 py-4 first:pt-4 last:pb-4">
-                    <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium leading-snug">{update.title}</p>
-                      <p className="text-xs text-muted-foreground">{update.description}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{formatDate(update.date)}</p>
+              {recentNotifications.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No updates yet
+                </p>
+              ) : (
+                recentNotifications.map((notification) => {
+                  const Icon = updateIcon[notification.type as NotificationType] ?? Bell;
+                  const content = (
+                    <div className="flex items-start gap-3 py-4 first:pt-4 last:pb-4">
+                      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm font-medium leading-snug">{notification.title}</p>
+                        <p className="text-xs text-muted-foreground">{notification.body}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {formatDate(notification.createdAt)}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                );
-                return update.courseId ? (
-                  <Link key={update.id} href={`/courses/${update.courseId}`} className="hover:bg-muted/50">
-                    {content}
-                  </Link>
-                ) : (
-                  <div key={update.id}>{content}</div>
-                );
-              })}
+                  );
+                  return notification.linkHref && isSafeInternalHref(notification.linkHref) ? (
+                    <Link
+                      key={notification.id}
+                      href={notification.linkHref}
+                      className="hover:bg-muted/50"
+                    >
+                      {content}
+                    </Link>
+                  ) : (
+                    <div key={notification.id}>{content}</div>
+                  );
+                })
+              )}
             </CardContent>
           </Card>
         </div>
