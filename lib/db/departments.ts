@@ -101,9 +101,9 @@ export async function clearUserDepartment(userId: string, departmentId: string):
 }
 
 /**
- * Members' and courses' `departmentId` clear to null on their own
- * (`onDelete: "set null"`), but `department_admins` and
- * `department_course_assignments` have NOT NULL department FKs with no
+ * Members', courses', and notification_broadcasts' department references
+ * clear to null on their own (`onDelete: "set null"`), but `department_admins`
+ * and `department_course_assignments` have NOT NULL department FKs with no
  * cascade - those rows are deleted first, in the same transaction, or the
  * department delete itself would fail with a foreign-key violation.
  */

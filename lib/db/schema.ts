@@ -7,6 +7,7 @@ import {
   timestamp,
   jsonb,
   unique,
+  index,
 } from "drizzle-orm/pg-core";
 
 export const departments = pgTable("departments", {
@@ -83,23 +84,32 @@ export const notificationBroadcasts = pgTable("notification_broadcasts", {
   body: text("body").notNull(),
   // 'all' | 'department' - plain text, app-validated. See Global Constraints.
   targetScope: text("target_scope").notNull(),
-  targetDepartmentId: uuid("target_department_id").references(() => departments.id),
+  // Nullable, set-null-on-delete like users.departmentId/courses.departmentId -
+  // a deleted department shouldn't block deleting it just because it was once
+  // a broadcast target (the default "no action" FK did exactly that).
+  targetDepartmentId: uuid("target_department_id").references(() => departments.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const notifications = pgTable("notifications", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  // 'course_assigned' | 'due_soon' | 'overdue' | 'admin_broadcast' - plain text,
-  // app-validated. See Global Constraints.
-  type: text("type").notNull(),
-  title: text("title").notNull(),
-  body: text("body").notNull(),
-  linkHref: text("link_href"),
-  readAt: timestamp("read_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  broadcastId: uuid("broadcast_id").references(() => notificationBroadcasts.id),
-});
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    // 'course_assigned' | 'due_soon' | 'overdue' | 'admin_broadcast' - plain text,
+    // app-validated. See Global Constraints.
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    linkHref: text("link_href"),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    broadcastId: uuid("broadcast_id").references(() => notificationBroadcasts.id),
+  },
+  // Every read path (bell, dashboard, unread count) filters by userId and
+  // orders by createdAt desc - this was a full table scan on just the PK.
+  (table) => [index("notifications_user_id_created_at_idx").on(table.userId, table.createdAt.desc())]
+);
 
 export const enrollments = pgTable(
   "enrollments",
