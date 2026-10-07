@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { users, departments, departmentAdmins, notifications, notificationBroadcasts } from "@/lib/db/schema";
 import { auth } from "@/auth";
+import * as broadcastLib from "@/lib/notifications/broadcast";
 import { POST } from "./route";
 
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
@@ -14,18 +15,26 @@ function jsonRequest(body: unknown) {
 
 describe("POST /api/admin/notifications/broadcast", () => {
   it("lets an OrgAdmin broadcast to all users", async () => {
+    // This test's job is verifying the permission check (an OrgAdmin's
+    // scope-"all" request reaches createBroadcast at all), not re-verifying
+    // createBroadcast's own fan-out behavior - that's already covered by
+    // lib/notifications/broadcast.test.ts. Mocking it here means this test
+    // no longer writes a real notification to every active user on every
+    // run (previously ~425 real rows per test run).
     const [admin] = await db.insert(users).values({ email: `org-admin-${randomUUID()}@example.com`, displayName: "Org Admin" }).returning();
     vi.mocked(auth).mockResolvedValue({ user: { email: admin.email, roles: ["OrgAdmin"] } } as never);
-    let payload: { broadcastId?: string } | undefined;
+    const fakeResult = { broadcastId: randomUUID(), recipientCount: 425 };
+    const createBroadcastSpy = vi.spyOn(broadcastLib, "createBroadcast").mockResolvedValue(fakeResult);
     try {
       const response = await POST(jsonRequest({ title: "t", body: "b", targetScope: "all" }));
-      payload = await response.json();
+      const payload = await response.json();
       expect(response.status).toBe(200);
+      expect(createBroadcastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ authorEmail: admin.email, title: "t", body: "b", targetScope: "all" })
+      );
+      expect(payload).toEqual(fakeResult);
     } finally {
-      if (payload?.broadcastId) {
-        await db.delete(notifications).where(eq(notifications.broadcastId, payload.broadcastId));
-        await db.delete(notificationBroadcasts).where(eq(notificationBroadcasts.id, payload.broadcastId));
-      }
+      createBroadcastSpy.mockRestore();
       await db.delete(users).where(eq(users.id, admin.id));
     }
   });
