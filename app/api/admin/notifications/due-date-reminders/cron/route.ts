@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { serverError } from "@/lib/api/errors";
-import { sendDueDateReminders } from "@/lib/mail/due-date-reminders";
+import { sendDueDateReminders, sendOverdueNotifications } from "@/lib/mail/due-date-reminders";
 
 /**
  * Daily due-date-reminder sweep, triggered by the `crons` entry in
@@ -22,7 +22,13 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const result = await sendDueDateReminders();
+    const dueSoon = await sendDueDateReminders();
+    const overdue = await sendOverdueNotifications();
+    const result = {
+      checked: dueSoon.checked + overdue.checked,
+      sent: dueSoon.sent + overdue.sent,
+      failed: dueSoon.failed + overdue.failed,
+    };
     console.log(
       `Due-date reminder cron: ${result.checked} checked, ${result.sent} sent, ${result.failed} failed`
     );

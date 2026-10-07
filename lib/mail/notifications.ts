@@ -107,3 +107,23 @@ export async function sendDueDateReminderEmail(
   );
   await sendMail({ to: [user.email], subject: `Reminder: ${course.title} is due soon`, html });
 }
+
+/**
+ * Fired by the daily overdue sweep (lib/mail/due-date-reminders.ts's
+ * sendOverdueNotifications) for enrollments whose due date has already
+ * passed and haven't been notified yet.
+ */
+export async function sendOverdueEmail(
+  user: NotifyUser,
+  course: NotifyCourse & { dueAt: string | Date }
+): Promise<void> {
+  const title = escapeHtml(course.title);
+  const name = escapeHtml(user.displayName);
+  const html = wrapEmail(
+    "Course overdue",
+    `<p style="margin:0 0 16px;">Hi ${name},</p>
+     <p style="margin:0 0 16px;"><strong>${title}</strong> was due by <strong>${formatDate(course.dueAt)}</strong> and is now past its due date.</p>
+     <p style="margin:0;"><a href="${APP_URL}/courses" style="color:${BRAND_BLUE};">Finish it now</a></p>`
+  );
+  await sendMail({ to: [user.email], subject: `Overdue: ${course.title}`, html });
+}

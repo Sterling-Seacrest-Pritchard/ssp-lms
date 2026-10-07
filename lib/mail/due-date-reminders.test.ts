@@ -3,11 +3,17 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { courses, enrollments, users } from "@/lib/db/schema";
-import { sendDueDateReminderEmail } from "./notifications";
-import { sendDueDateReminders } from "./due-date-reminders";
+import { sendDueDateReminderEmail, sendOverdueEmail } from "./notifications";
+import { sendDueDateReminders, sendOverdueNotifications } from "./due-date-reminders";
+import { createNotification } from "@/lib/notifications/create";
 
 vi.mock("./notifications", () => ({
   sendDueDateReminderEmail: vi.fn().mockResolvedValue(undefined),
+  sendOverdueEmail: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/lib/notifications/create", () => ({
+  createNotification: vi.fn().mockResolvedValue(undefined),
 }));
 
 const NOW = new Date("2026-06-15T00:00:00Z");
@@ -159,6 +165,78 @@ describe("sendDueDateReminders", () => {
       expect(updated.dueReminderSentAt).toBeNull();
     } finally {
       await cleanup([{ enrollmentId: seeded.enrollment.id, courseId: seeded.course.id, userId: seeded.user.id }]);
+    }
+  });
+});
+
+describe("sendDueDateReminders notification write", () => {
+  beforeEach(() => {
+    vi.mocked(sendDueDateReminderEmail).mockReset();
+    vi.mocked(sendDueDateReminderEmail).mockResolvedValue(undefined);
+    vi.mocked(createNotification).mockClear();
+  });
+
+  it("also writes a due_soon notification when it emails a reminder", async () => {
+    const seeded = await seedEnrollment({ dueAt: daysFromNow(2) });
+    try {
+      await sendDueDateReminders(NOW);
+      expect(createNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: seeded.user.id, type: "due_soon" })
+      );
+    } finally {
+      await cleanup([{ enrollmentId: seeded.enrollment.id, courseId: seeded.course.id, userId: seeded.user.id }]);
+    }
+  });
+});
+
+describe("sendOverdueNotifications", () => {
+  beforeEach(() => {
+    vi.mocked(sendOverdueEmail).mockReset();
+    vi.mocked(sendOverdueEmail).mockResolvedValue(undefined);
+    vi.mocked(createNotification).mockClear();
+  });
+
+  it("emails and notifies an incomplete enrollment whose due date has passed", async () => {
+    const seeded = await seedEnrollment({ dueAt: daysFromNow(-1) });
+    try {
+      const result = await sendOverdueNotifications(NOW);
+      expect(result.sent).toBeGreaterThanOrEqual(1);
+      expect(sendOverdueEmail).toHaveBeenCalled();
+      expect(createNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: seeded.user.id, type: "overdue" })
+      );
+      const [updated] = await db.select().from(enrollments).where(eq(enrollments.id, seeded.enrollment.id));
+      expect(updated.overdueNotifiedAt).not.toBeNull();
+    } finally {
+      await cleanup([{ enrollmentId: seeded.enrollment.id, courseId: seeded.course.id, userId: seeded.user.id }]);
+    }
+  });
+
+  it("does not re-notify an enrollment already marked overdue-notified", async () => {
+    const seeded = await seedEnrollment({ dueAt: daysFromNow(-1) });
+    await db.update(enrollments).set({ overdueNotifiedAt: daysFromNow(-1) }).where(eq(enrollments.id, seeded.enrollment.id));
+    try {
+      await sendOverdueNotifications(NOW);
+      const called = vi.mocked(sendOverdueEmail).mock.calls.some(([user]) => user.email === seeded.user.email);
+      expect(called).toBe(false);
+    } finally {
+      await cleanup([{ enrollmentId: seeded.enrollment.id, courseId: seeded.course.id, userId: seeded.user.id }]);
+    }
+  });
+
+  it("skips a completed or inactive enrollment even if overdue", async () => {
+    const completed = await seedEnrollment({ dueAt: daysFromNow(-1), status: "completed" });
+    const inactive = await seedEnrollment({ dueAt: daysFromNow(-1), isActive: false });
+    try {
+      await sendOverdueNotifications(NOW);
+      const emailed = vi.mocked(sendOverdueEmail).mock.calls.map(([user]) => user.email);
+      expect(emailed).not.toContain(completed.user.email);
+      expect(emailed).not.toContain(inactive.user.email);
+    } finally {
+      await cleanup([
+        { enrollmentId: completed.enrollment.id, courseId: completed.course.id, userId: completed.user.id },
+        { enrollmentId: inactive.enrollment.id, courseId: inactive.course.id, userId: inactive.user.id },
+      ]);
     }
   });
 });
