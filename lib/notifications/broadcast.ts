@@ -30,23 +30,27 @@ export async function createBroadcast(input: CreateBroadcastInput): Promise<Crea
     .returning();
 
   // Resolve recipients based on targetScope
-  let recipients;
+  let recipients: { id: string }[];
   if (input.targetScope === "all") {
     recipients = await db
       .select({ id: users.id })
       .from(users)
       .where(eq(users.isActive, true));
-  } else {
-    // targetScope === "department"
+  } else if (input.targetDepartmentId) {
+    // targetScope === "department" - narrowed to a defined string here so
+    // the drizzle `eq()` overload resolves (it doesn't accept null/undefined).
+    const targetDepartmentId = input.targetDepartmentId;
     recipients = await db
       .select({ id: users.id })
       .from(users)
       .where(
         and(
           eq(users.isActive, true),
-          eq(users.departmentId, input.targetDepartmentId)
+          eq(users.departmentId, targetDepartmentId)
         )
       );
+  } else {
+    recipients = [];
   }
 
   // Fan out one notification per recipient
