@@ -68,68 +68,75 @@
     {
       "idx": 9,
       "version": "7",
+      "when": 1789478504511,
+      "tag": "0009_users_entra_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
       "when": 1789562737403,
       "tag": "0010_enrollments_module_progress",
       "breakpoints": true
     },
     {
-      "idx": 10,
+      "idx": 11,
       "version": "7",
       "when": 1789565720912,
       "tag": "0011_module_attempts_user_id_uuid_add",
       "breakpoints": true
     },
     {
-      "idx": 11,
+      "idx": 12,
       "version": "7",
       "when": 1789568446415,
       "tag": "0012_module_attempts_user_id_uuid_finish",
       "breakpoints": true
     },
     {
-      "idx": 12,
+      "idx": 13,
       "version": "7",
       "when": 1789600000000,
       "tag": "0013_module_attempts_attempt_number_unique",
       "breakpoints": true
     },
     {
-      "idx": 13,
+      "idx": 14,
       "version": "7",
       "when": 1789582290864,
       "tag": "0014_quiz_module",
       "breakpoints": true
     },
     {
-      "idx": 14,
+      "idx": 15,
       "version": "7",
       "when": 1789700000000,
       "tag": "0015_text_module",
       "breakpoints": true
     },
     {
-      "idx": 15,
+      "idx": 16,
       "version": "7",
       "when": 1789800000000,
       "tag": "0016_department_course_assignments",
       "breakpoints": true
     },
     {
-      "idx": 16,
+      "idx": 17,
       "version": "7",
       "when": 1789900000000,
       "tag": "0017_department_admins",
       "breakpoints": true
     },
     {
-      "idx": 17,
+      "idx": 18,
       "version": "7",
       "when": 1791208299236,
       "tag": "0018_enrollments_due_reminder_sent_at",
       "breakpoints": true
     },
     {
-      "idx": 18,
+      "idx": 19,
       "version": "7",
       "when": 1791379430041,
       "tag": "0019_notifications_schema",
