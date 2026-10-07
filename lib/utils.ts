@@ -24,18 +24,25 @@ export function getInitials(name: string) {
  * restrict to same-origin absolute paths only, never an external/script URL.
  */
 export function isSafeInternalHref(href: string): boolean {
-  // A naive `startsWith("/")` check is bypassable: browsers normalize
-  // backslashes to forward slashes before parsing a URL, so "/\evil.com" (or
-  // a percent-encoded slash/backslash) can resolve as protocol-relative to a
-  // foreign host. Reject any raw backslash or encoded slash/backslash
-  // up front - every real notification path is a plain "/courses/{uuid}",
-  // so this can never reject a legitimate value - then resolve against a
-  // fixed dummy origin and check the parsed result's actual origin/protocol,
-  // which closes the rest of the class instead of pattern-matching it.
+  // This runs in both the browser (notification-bell.tsx, a client
+  // component) and on the server (page.tsx) - two different URL-parser
+  // implementations that could in principle disagree on some malformed
+  // edge case. The structural checks below (plain string operations,
+  // identical in every JS engine) are the real gate; URL-based origin
+  // resolution is reinforcement, not the sole check.
+  //
+  // Must be an absolute path, not scheme-relative ("//evil.com") or a bare
+  // relative reference (which the URL resolver would otherwise happily
+  // resolve onto our own origin, accepting a shape no real notification
+  // linkHref - always "/courses/{uuid}" - ever takes).
+  if (!href.startsWith("/") || href.startsWith("//")) return false
+  // Browsers normalize backslashes to forward slashes before parsing a URL,
+  // so "/\evil.com" (or a percent-encoded slash/backslash) can resolve as
+  // protocol-relative to a foreign host despite starting with a single "/".
   if (/\\|%2f|%5c/i.test(href)) return false
   try {
     const resolved = new URL(href, "https://same-origin.invalid")
-    return resolved.origin === "https://same-origin.invalid" && resolved.protocol === "https:"
+    return resolved.origin === "https://same-origin.invalid"
   } catch {
     return false
   }
