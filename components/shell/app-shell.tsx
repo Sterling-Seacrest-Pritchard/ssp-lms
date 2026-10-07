@@ -11,6 +11,7 @@ import {
   BookOpen,
   Video,
   BarChart3,
+  Bell,
   Users,
   Settings,
   GraduationCap,
@@ -45,6 +46,7 @@ const orgAdminNav = [
   { href: "/admin/content", label: "Content Authoring", icon: BookOpen },
   { href: "/admin/videos", label: "Video Library", icon: Video },
   { href: "/admin/reports", label: "Reports", icon: BarChart3 },
+  { href: "/admin/notifications", label: "Notifications", icon: Bell },
   // An Org Admin is commonly also the real Department Admin of their own
   // department (the Entra group behind that role now includes the Org
   // Admin group too) - the page itself already scopes purely to the
@@ -65,6 +67,7 @@ const departmentAdminNav = [
   // the page treats it as narrowing-only (never a way to widen access), see
   // that page for the actual check.
   { href: "/admin/reports?view=department", label: "Reports", icon: BarChart3 },
+  { href: "/admin/notifications", label: "Notifications", icon: Bell },
   { href: "/admin/department", label: "Department", icon: Users },
 ];
 
