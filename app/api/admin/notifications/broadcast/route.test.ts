@@ -16,13 +16,16 @@ describe("POST /api/admin/notifications/broadcast", () => {
   it("lets an OrgAdmin broadcast to all users", async () => {
     const [admin] = await db.insert(users).values({ email: `org-admin-${randomUUID()}@example.com`, displayName: "Org Admin" }).returning();
     vi.mocked(auth).mockResolvedValue({ user: { email: admin.email, roles: ["OrgAdmin"] } } as never);
+    let payload: { broadcastId?: string } | undefined;
     try {
       const response = await POST(jsonRequest({ title: "t", body: "b", targetScope: "all" }));
+      payload = await response.json();
       expect(response.status).toBe(200);
-      const payload = await response.json();
-      await db.delete(notifications).where(eq(notifications.broadcastId, payload.broadcastId));
-      await db.delete(notificationBroadcasts).where(eq(notificationBroadcasts.id, payload.broadcastId));
     } finally {
+      if (payload?.broadcastId) {
+        await db.delete(notifications).where(eq(notifications.broadcastId, payload.broadcastId));
+        await db.delete(notificationBroadcasts).where(eq(notificationBroadcasts.id, payload.broadcastId));
+      }
       await db.delete(users).where(eq(users.id, admin.id));
     }
   });
@@ -56,12 +59,16 @@ describe("POST /api/admin/notifications/broadcast", () => {
     const [dept] = await db.insert(departments).values({ name: `Own Dept ${randomUUID()}` }).returning();
     await db.insert(departmentAdmins).values({ userId: admin.id, departmentId: dept.id });
     vi.mocked(auth).mockResolvedValue({ user: { email: admin.email, roles: ["DepartmentAdmin"] } } as never);
+    let payload: { broadcastId?: string } | undefined;
     try {
       const response = await POST(jsonRequest({ title: "t", body: "b", targetScope: "department", targetDepartmentId: dept.id }));
+      payload = await response.json();
       expect(response.status).toBe(200);
-      const payload = await response.json();
-      await db.delete(notificationBroadcasts).where(eq(notificationBroadcasts.id, payload.broadcastId));
     } finally {
+      if (payload?.broadcastId) {
+        await db.delete(notifications).where(eq(notifications.broadcastId, payload.broadcastId));
+        await db.delete(notificationBroadcasts).where(eq(notificationBroadcasts.id, payload.broadcastId));
+      }
       await db.delete(departmentAdmins).where(eq(departmentAdmins.userId, admin.id));
       await db.delete(users).where(eq(users.id, admin.id));
       await db.delete(departments).where(eq(departments.id, dept.id));
