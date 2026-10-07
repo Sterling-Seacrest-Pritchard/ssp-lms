@@ -24,7 +24,21 @@ export function getInitials(name: string) {
  * restrict to same-origin absolute paths only, never an external/script URL.
  */
 export function isSafeInternalHref(href: string): boolean {
-  return href.startsWith("/") && !href.startsWith("//")
+  // A naive `startsWith("/")` check is bypassable: browsers normalize
+  // backslashes to forward slashes before parsing a URL, so "/\evil.com" (or
+  // a percent-encoded slash/backslash) can resolve as protocol-relative to a
+  // foreign host. Reject any raw backslash or encoded slash/backslash
+  // up front - every real notification path is a plain "/courses/{uuid}",
+  // so this can never reject a legitimate value - then resolve against a
+  // fixed dummy origin and check the parsed result's actual origin/protocol,
+  // which closes the rest of the class instead of pattern-matching it.
+  if (/\\|%2f|%5c/i.test(href)) return false
+  try {
+    const resolved = new URL(href, "https://same-origin.invalid")
+    return resolved.origin === "https://same-origin.invalid" && resolved.protocol === "https:"
+  } catch {
+    return false
+  }
 }
 
 export function formatBytes(bytes: number) {
