@@ -7,11 +7,22 @@ import { createBroadcast } from "./broadcast";
 
 describe("createBroadcast", () => {
   it("fans out one notification per active user for scope 'all', skipping inactive users", async () => {
+    // This test genuinely exercises real createBroadcast fan-out against the
+    // real `users` table (to prove the isActive filter works), so it briefly
+    // writes a real notification row to every real active user in the shared
+    // dev DB. The bulk-insert fix in createBroadcast cuts that exposure
+    // window from ~10s to well under 1s; title/body are unmistakably
+    // test-flagged in case a real employee notices one before cleanup runs.
     const active = await db.insert(users).values({ email: `bc-active-${randomUUID()}@example.com`, displayName: "Active" }).returning();
     const inactive = await db.insert(users).values({ email: `bc-inactive-${randomUUID()}@example.com`, displayName: "Inactive", isActive: false }).returning();
     let result;
     try {
-      result = await createBroadcast({ authorEmail: "org-admin@example.com", title: "Heads up", body: "System maintenance tonight", targetScope: "all" });
+      result = await createBroadcast({
+        authorEmail: "org-admin@example.com",
+        title: "[AUTOMATED TEST — safe to ignore]",
+        body: "[AUTOMATED TEST — safe to ignore] This is a test notification from the ssp-lms test suite.",
+        targetScope: "all",
+      });
       const rows = await db.select().from(notifications).where(eq(notifications.broadcastId, result.broadcastId));
       const recipientIds = rows.map((r) => r.userId);
       expect(recipientIds).toContain(active[0].id);
