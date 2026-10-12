@@ -11,7 +11,7 @@ import {
   setUserDepartment,
 } from "./departments";
 import { db } from "./client";
-import { departments, users, courses, departmentAdmins, departmentCourseAssignments } from "./schema";
+import { departments, users, courses, departmentAdmins, departmentCourseAssignments, notificationBroadcasts } from "./schema";
 import { assignDepartmentAdmin } from "./department-admins";
 import { assignCourseToDepartment } from "./department-course-assignments";
 
@@ -111,6 +111,25 @@ describe("deleteDepartment", () => {
     } finally {
       await db.delete(users).where(eq(users.id, admin.id));
       await db.delete(courses).where(eq(courses.id, course.id));
+    }
+  });
+
+  it("clears target_department_id on a broadcast that targeted this department, instead of blocking the delete", async () => {
+    const dept = await createDepartment(`Dept-${randomUUID()}`);
+    const [broadcast] = await db
+      .insert(notificationBroadcasts)
+      .values({ authorEmail: "admin@example.com", title: "t", body: "b", targetScope: "department", targetDepartmentId: dept.id })
+      .returning();
+    try {
+      await deleteDepartment(dept.id);
+
+      const [deptRow] = await db.select().from(departments).where(eq(departments.id, dept.id));
+      expect(deptRow).toBeUndefined();
+
+      const [broadcastRow] = await db.select().from(notificationBroadcasts).where(eq(notificationBroadcasts.id, broadcast.id));
+      expect(broadcastRow.targetDepartmentId).toBeNull();
+    } finally {
+      await db.delete(notificationBroadcasts).where(eq(notificationBroadcasts.id, broadcast.id));
     }
   });
 });

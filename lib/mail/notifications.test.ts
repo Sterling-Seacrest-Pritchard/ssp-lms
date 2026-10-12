@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { sendMail } from "./graph-mail";
-import { sendCourseAssignedEmail, sendDueDateReminderEmail } from "./notifications";
+import { sendCourseAssignedEmail, sendDueDateReminderEmail, sendOverdueEmail } from "./notifications";
 
 vi.mock("./graph-mail", () => ({
   sendMail: vi.fn().mockResolvedValue(undefined),
@@ -71,5 +71,17 @@ describe("sendDueDateReminderEmail", () => {
     expect(to).toEqual(["learner@example.com"]);
     expect(subject).toBe("Reminder: Fire Safety is due soon");
     expect(html).toContain("11/01/2026");
+  });
+});
+
+describe("sendOverdueEmail", () => {
+  it("sends an overdue email with the course title and due date", async () => {
+    await sendOverdueEmail(
+      { email: "learner@example.com", displayName: "Learner Name" },
+      { title: "AML Fundamentals", dueAt: new Date("2026-01-01T00:00:00Z") }
+    );
+    expect(sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: ["learner@example.com"], subject: expect.stringContaining("Overdue") })
+    );
   });
 });

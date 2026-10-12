@@ -11,6 +11,7 @@ import {
   BookOpen,
   Video,
   BarChart3,
+  Bell,
   Users,
   Settings,
   GraduationCap,
@@ -28,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { NotificationBell } from "@/components/shell/notification-bell";
 import { currentUser } from "@/lib/mock-data/courses";
 import { cn, getInitials } from "@/lib/utils";
 import { roleFromClaims, type Role } from "@/lib/roles";
@@ -44,6 +46,7 @@ const orgAdminNav = [
   { href: "/admin/content", label: "Content Authoring", icon: BookOpen },
   { href: "/admin/videos", label: "Video Library", icon: Video },
   { href: "/admin/reports", label: "Reports", icon: BarChart3 },
+  { href: "/admin/notifications", label: "Notifications", icon: Bell },
   // An Org Admin is commonly also the real Department Admin of their own
   // department (the Entra group behind that role now includes the Org
   // Admin group too) - the page itself already scopes purely to the
@@ -64,6 +67,7 @@ const departmentAdminNav = [
   // the page treats it as narrowing-only (never a way to widen access), see
   // that page for the actual check.
   { href: "/admin/reports?view=department", label: "Reports", icon: BarChart3 },
+  { href: "/admin/notifications", label: "Notifications", icon: Bell },
   { href: "/admin/department", label: "Department", icon: Users },
 ];
 
@@ -271,6 +275,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 Sign in with Microsoft
               </Button>
             )}
+            {isAuthenticated && <NotificationBell />}
             <Avatar>
               {session?.user?.image && <AvatarImage src={session.user.image} alt={displayName} />}
               <AvatarFallback>{avatarInitials}</AvatarFallback>
